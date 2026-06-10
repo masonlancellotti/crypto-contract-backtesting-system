@@ -186,7 +186,7 @@ def run_continuous(
         if name.lower().startswith("deribit"):
             continue  # handled separately below
         try:
-            und_clients.append(build_underlying_client(name, cfg))
+            und_clients.append(build_underlying_client(name, cfg, series=series))
         except ValueError as exc:
             emit(f"[warn] {exc}")
     # Deribit is slow-moving context: poll it on its own (loose) interval and join
@@ -214,7 +214,7 @@ def run_continuous(
                  "Deribit is OPTIONAL — skipping it and continuing with the other sources. "
                  "Set DERIBIT_ENABLED=true to collect + join it (no separate command needed).")
     try:
-        spot_client = build_underlying_client(line_source, cfg)
+        spot_client = build_underlying_client(line_source, cfg, series=series)
     except ValueError:
         spot_client = None
 

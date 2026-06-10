@@ -68,7 +68,7 @@ def _patch_clients(monkeypatch):
     monkeypatch.setattr(KalshiClient, "get_orderbook", lambda self, t, **kw: raw_ob)
     monkeypatch.setattr(KalshiClient, "get_market", lambda self, t: market)
     monkeypatch.setattr(collector_mod, "build_underlying_client",
-                        lambda name, cfg: _FakeUnd(name))
+                        lambda name, cfg, **kw: _FakeUnd(name))
 
 
 def _upcoming_market():
@@ -105,7 +105,7 @@ def test_max_markets_1_collects_active_and_shadow_sees_executable_row(tmp_path, 
     monkeypatch.setattr(KalshiClient, "discover", lambda self, **kw: [up, cur])
     monkeypatch.setattr(KalshiClient, "get_orderbook", lambda self, t, **kw: raw_ob)
     monkeypatch.setattr(KalshiClient, "get_market", lambda self, t: cur)
-    monkeypatch.setattr(collector_mod, "build_underlying_client", lambda name, cfg: _FakeUnd(name))
+    monkeypatch.setattr(collector_mod, "build_underlying_client", lambda name, cfg, **kw: _FakeUnd(name))
     cfg = load_config(mode="paper")
 
     msgs: list[str] = []
@@ -174,7 +174,7 @@ def test_collector_captures_tbd_start_reference_from_underlying_near_open(tmp_pa
     monkeypatch.setattr(KalshiClient, "get_orderbook", lambda self, t, **kw: raw_ob)
     monkeypatch.setattr(KalshiClient, "get_market", lambda self, t: market)
     monkeypatch.setattr(collector_mod, "build_underlying_client",
-                        lambda name, cfg: _FakeUndAt(name, open_ms + 250, price=72000.0))
+                        lambda name, cfg, **kw: _FakeUndAt(name, open_ms + 250, price=72000.0))
     cfg = load_config(mode="paper")
 
     collector_mod.run_continuous(

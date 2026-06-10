@@ -28,6 +28,19 @@ Set-Location $repo
 $py = Join-Path $repo ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) { $py = "python" }
 
+# Per-series data/report isolation: non-BTC series write under data\series\<SERIES>
+# so concurrent collectors NEVER append to the same JSONL files. KXBTC15M keeps the
+# repo-root data\ for continuity with everything collected so far. Downstream
+# commands for a non-BTC series need the same env (e.g.
+#   $env:DATA_DIR="...\data\series\KXETH15M"; python -m btc5m.cli kalshi-data-readiness --series KXETH15M)
+if ($Series -ne "KXBTC15M") {
+    $env:DATA_DIR = Join-Path $repo "data\series\$Series"
+    $env:REPORTS_DIR = Join-Path $repo "reports\series\$Series"
+    New-Item -ItemType Directory -Force $env:DATA_DIR | Out-Null
+    New-Item -ItemType Directory -Force $env:REPORTS_DIR | Out-Null
+    Write-Host "per-series isolation: DATA_DIR=$env:DATA_DIR" -ForegroundColor DarkCyan
+}
+
 Write-Host "=== Kalshi continuous collection (record-only; live disabled) ===" -ForegroundColor Cyan
 Write-Host "series=$Series sources=$Sources cycle=${SecondsPerCycle}s interval=${Interval}s max_markets=$MaxMarkets"
 Write-Host "Stop any time with Ctrl-C; recorded data stays valid." -ForegroundColor Yellow

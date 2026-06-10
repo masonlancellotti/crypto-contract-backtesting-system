@@ -83,7 +83,7 @@ def test_run_kalshi_paper_pipeline_offline(tmp_path, monkeypatch):
     monkeypatch.setattr(KalshiClient, "get_market", lambda self, t: market)
     monkeypatch.setattr(KalshiClient, "server_date_header", lambda self: "Mon, 01 Jun 2026 07:30:00 GMT")
     # No underlying network: force build_underlying_client to fail (spot None, no sources).
-    def _no_underlying(name, cfg):
+    def _no_underlying(name, cfg, **kw):
         raise ValueError(f"unknown source {name}")
     monkeypatch.setattr(cli, "build_underlying_client", _no_underlying)
 

@@ -237,19 +237,41 @@ class BinanceFuturesClient:
         return out
 
 
+# Kalshi crypto 15m series -> underlying spot/perp symbols. All five series are
+# live on Kalshi (verified 2026-06-10); the pipeline is series-parameterized and
+# the underlying feeds follow the series asset.
+SERIES_UNDERLYING_SYMBOLS = {
+    "KXBTC15M": {"coinbase": "BTC-USD", "binance": "BTCUSDT"},
+    "KXETH15M": {"coinbase": "ETH-USD", "binance": "ETHUSDT"},
+    "KXSOL15M": {"coinbase": "SOL-USD", "binance": "SOLUSDT"},
+    "KXDOGE15M": {"coinbase": "DOGE-USD", "binance": "DOGEUSDT"},
+    "KXXRP15M": {"coinbase": "XRP-USD", "binance": "XRPUSDT"},
+}
+
+
+def underlying_symbols_for_series(series: str | None) -> dict:
+    """Spot/perp symbols for a Kalshi series (default BTC for unknown/legacy)."""
+    return SERIES_UNDERLYING_SYMBOLS.get((series or "").upper(),
+                                         SERIES_UNDERLYING_SYMBOLS["KXBTC15M"])
+
+
 # Registry for CLI --sources resolution.
-def build_underlying_client(name: str, config: AppConfig | None = None):
+def build_underlying_client(name: str, config: AppConfig | None = None,
+                            series: str | None = None):
     key = name.strip().lower()
+    syms = underlying_symbols_for_series(series)
     if key in ("coinbase", "coinbase_spot", "cb"):
-        return CoinbaseSpotClient(config)
+        return CoinbaseSpotClient(config, symbol=syms["coinbase"])
     if key in ("binance", "binance_futures", "binance_perp"):
-        return BinanceFuturesClient(config)
+        return BinanceFuturesClient(config, symbol=syms["binance"])
     raise ValueError(f"unknown underlying source: {name!r} (use coinbase|binance)")
 
 
 __all__ = [
     "CoinbaseSpotClient",
     "BinanceFuturesClient",
+    "SERIES_UNDERLYING_SYMBOLS",
     "build_underlying_client",
+    "underlying_symbols_for_series",
     "LineSourceStatus",
 ]

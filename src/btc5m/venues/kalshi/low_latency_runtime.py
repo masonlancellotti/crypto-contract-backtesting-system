@@ -254,7 +254,7 @@ def run_hotpath_smoke(
             if name.startswith("deribit"):
                 continue
             try:
-                underlying_clients.append(build_underlying_client(name, cfg))
+                underlying_clients.append(build_underlying_client(name, cfg, series=series))
             except ValueError as exc:
                 emit(f"[warn] {exc}")
     underlying_clients = underlying_clients or []

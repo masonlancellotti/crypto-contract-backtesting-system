@@ -293,7 +293,7 @@ def cmd_record_underlying(cfg: AppConfig, args: argparse.Namespace) -> int:
     clients = []
     for name in sources:
         try:
-            clients.append(build_underlying_client(name, cfg))
+            clients.append(build_underlying_client(name, cfg, series=getattr(args, 'series', None)))
         except ValueError as exc:
             print(f"  warn: {exc}")
     if not clients:
@@ -922,7 +922,7 @@ def cmd_run_kalshi_paper_pipeline(cfg: AppConfig, args: argparse.Namespace) -> i
         if name.lower().startswith("deribit"):
             continue  # optional auxiliary source handled separately (point-in-time join)
         try:
-            und_clients.append(build_underlying_client(name, cfg))
+            und_clients.append(build_underlying_client(name, cfg, series=getattr(args, 'series', None)))
         except ValueError as exc:
             blockers.append(str(exc))
     deribit_client = None
@@ -939,7 +939,7 @@ def cmd_run_kalshi_paper_pipeline(cfg: AppConfig, args: argparse.Namespace) -> i
     deribit_state = DeribitState()
     last_deribit_poll = 0.0
     try:
-        spot_client = build_underlying_client(args.line_source, cfg)
+        spot_client = build_underlying_client(args.line_source, cfg, series=getattr(args, 'series', None))
     except ValueError:
         spot_client = None
 
@@ -2504,13 +2504,14 @@ def cmd_kalshi_maker_entry_study(cfg: AppConfig, args: argparse.Namespace) -> in
     horizons = None
     if horizons_arg:
         horizons = [h if h == "close" else float(h) for h in str(horizons_arg).split(",") if h]
+    fill_model = getattr(args, "fill_model", "quote") or "quote"
     r = run_maker_entry_study(cfg, series=args.series,
                               improve_cents=int(getattr(args, "improve_cents", 1) or 1),
                               maker_fee_rate=float(getattr(args, "maker_fee_rate", 0.0) or 0.0),
-                              rest_horizons=horizons)
+                              rest_horizons=horizons, fill_model=fill_model)
     if getattr(args, "json", False):
         print(json.dumps(r, indent=2, default=str)); return 0
-    print(f"=== kalshi-maker-entry-study: series={args.series} ===")
+    print(f"=== kalshi-maker-entry-study: series={args.series} fill_model={fill_model} ===")
     sp = r.get("spread_stats", {})
     tf = r.get("taker_fee_stats", {})
     print(f"  windows={r.get('n_windows')} decision_points={r.get('n_decision_points')}")
@@ -2529,6 +2530,28 @@ def cmd_kalshi_maker_entry_study(cfg: AppConfig, args: argparse.Namespace) -> in
     print(f"  {v.get('interpretation')}")
     print(f"  report={r.get('report_file')}")
     print("  note: READ-ONLY lower-bound study; no orders; no paper; live disabled.")
+    return 0
+
+
+def cmd_kalshi_backfill_trades(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """READ-ONLY: backfill historical PUBLIC trade prints (idempotent; no orders)."""
+    from .venues.kalshi.backfill_trades import backfill_trades
+
+    start = getattr(args, "start_date", None)
+    if not start:
+        print("ERROR: --start-date YYYYMMDD is required (history verified to >= 20260601)")
+        return 1
+    print(f"=== kalshi-backfill-trades: series={args.series} start={start} "
+          f"end={getattr(args, 'end_date', None) or 'now'} ===")
+    r = backfill_trades(cfg, series=args.series, start_date=start,
+                        end_date=getattr(args, "end_date", None),
+                        chunk_hours=int(getattr(args, "chunk_hours", 1) or 1))
+    print(f"  chunks={r['chunks']} fetched={r['fetched']} series_matched={r['series_matched']} "
+          f"written={r['written']} dupes_skipped={r['duplicates_skipped']} errors={r['errors']}")
+    if r.get("pages_capped_chunks"):
+        print(f"  WARNING: {r['pages_capped_chunks']} chunk(s) hit the page cap -> shrink --chunk-hours")
+    print(f"  days_touched={r['days_touched']}")
+    print("  note: READ-ONLY public tape; idempotent (trade_id dedupe); no orders; live disabled.")
     return 0
 
 
@@ -3758,6 +3781,7 @@ _COMMANDS = {
     "kalshi-edge-threshold-sweep": cmd_kalshi_edge_threshold_sweep,
     "kalshi-uncertainty-audit": cmd_kalshi_uncertainty_audit,
     "kalshi-maker-entry-study": cmd_kalshi_maker_entry_study,
+    "kalshi-backfill-trades": cmd_kalshi_backfill_trades,
     "kalshi-calibration-compare": cmd_kalshi_calibration_compare,
     "kalshi-probability-repair": cmd_kalshi_probability_repair,
     "kalshi-market-shrink-sweep": cmd_kalshi_market_shrink_sweep,
@@ -4020,6 +4044,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="kalshi-maker-entry-study: maker fee rate (default 0.0 = ASSUMED zero maker fee)")
     parser.add_argument("--rest-horizons", default=None, dest="rest_horizons",
                         help="kalshi-maker-entry-study: comma list of rest seconds + 'close' (default 60,180,300,close)")
+    parser.add_argument("--fill-model", default="quote", dest="fill_model",
+                        choices=["quote", "prints-through", "prints-front"],
+                        help="kalshi-maker-entry-study: quote-crossing (v1 lower bound) or REAL "
+                             "trade prints (certain trade-through / optimistic front-of-queue)")
+    parser.add_argument("--chunk-hours", type=int, default=1, dest="chunk_hours",
+                        help="kalshi-backfill-trades: tape chunk size in hours (default 1)")
     # ----- kalshi-reprice-lag-* / shock-scan (READ-ONLY event study) -----
     parser.add_argument("--start-date", default=None, dest="start_date",
                         help="reprice-lag: start day YYYYMMDD (inclusive)")

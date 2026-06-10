@@ -150,14 +150,59 @@ def _first_trade_through(snaps: list[dict], from_idx: int, ask_key: str,
     return None
 
 
+def _first_print_fill(prints: list[dict], t0: int, close_ms: Optional[float], side: str,
+                      limit: float, *, queue: str) -> Optional[int]:
+    """First REAL trade print that fills a resting ``side`` buy at ``limit``.
+
+    Kalshi matching: a taker buying YES consumes resting NO bids and vice versa,
+    so a resting YES bid is hit by ``taker_side == "no"`` prints (and NO bids by
+    ``taker_side == "yes"``). The print's same-side price is the level reached:
+    - ``queue="through"``: price strictly BELOW the limit — deeper levels traded,
+      so every resting order at the limit was filled first (certain, queue-free).
+    - ``queue="front"``: price at-or-below the limit — assumes front-of-queue at
+      the level (optimistic). Truth lies between the two.
+    """
+    taker = "no" if side == "YES" else "yes"
+    price_key = "yes_price" if side == "YES" else "no_price"
+    eps = 1e-9
+    for p in prints:
+        ts = p["created_time_ms"]
+        if ts <= t0:
+            continue
+        if close_ms is not None and ts >= close_ms:
+            return None
+        if p.get("taker_side") != taker:
+            continue
+        px = p.get(price_key)
+        if not isinstance(px, (int, float)):
+            continue
+        if (queue == "through" and px < limit - 0.005) or \
+           (queue == "front" and px <= limit + eps):
+            return int(ts)
+    return None
+
+
 def simulate_maker_entries(config, *, series: str = "KXBTC15M",
                            improve_cents: int = 1,
                            rest_horizons: Optional[list] = None,
-                           maker_fee_rate: float = 0.0) -> dict:
-    """Run the conservative maker-entry simulation over all labeled windows."""
+                           maker_fee_rate: float = 0.0,
+                           fill_model: str = "quote") -> dict:
+    """Run the maker-entry simulation over all labeled windows.
+
+    ``fill_model``: "quote" (v1: fill when the quote crosses the limit —
+    conservative lower bound), "prints-through" (REAL prints, certain fills:
+    price traded strictly through the level), or "prints-front" (REAL prints,
+    front-of-queue at the level — optimistic upper bound).
+    """
+    if fill_model not in ("quote", "prints-through", "prints-front"):
+        raise ValueError(f"unknown fill_model: {fill_model!r}")
     horizons = rest_horizons or [60, 180, 300, CLOSE_HORIZON]
     snaps_by_tk = load_window_snapshots(config, series=series)
     labels = _official_label_map(config)
+    prints_by_tk: dict[str, list[dict]] = {}
+    if fill_model != "quote":
+        from .backfill_trades import load_trade_prints
+        prints_by_tk = load_trade_prints(config, series=series)
     taker_fees = KalshiFeeModel.from_config(config)
     maker_fees = KalshiFeeModel(rate=maker_fee_rate, status="ASSUMED_ZERO_MAKER_FEE"
                                 if maker_fee_rate == 0.0 else "ASSUMED")
@@ -173,6 +218,9 @@ def simulate_maker_entries(config, *, series: str = "KXBTC15M",
         y = labels.get(tk)
         if y is None or not snaps:
             continue
+        if fill_model != "quote" and not prints_by_tk.get(tk):
+            continue  # print-based fills need the window's tape
+        prs = prints_by_tk.get(tk, [])
         windows_used.add(tk)
         close_ms = snaps[0].get("close_ms")
         for i in _decision_points(snaps):
@@ -194,7 +242,12 @@ def simulate_maker_entries(config, *, series: str = "KXBTC15M",
                            "secs_to_close": secs_to_close, "y_side": y_side,
                            "would_cross": limit >= ask0 - 1e-9, "fill_ms": None}
                     if not rec["would_cross"] and 0.0 < limit < 1.0:
-                        rec["fill_ms"] = _first_trade_through(snaps, i, ask_key, limit)
+                        if fill_model == "quote":
+                            rec["fill_ms"] = _first_trade_through(snaps, i, ask_key, limit)
+                        else:
+                            rec["fill_ms"] = _first_print_fill(
+                                prs, t0, close_ms, side, limit,
+                                queue="through" if fill_model == "prints-through" else "front")
                     decisions.append(rec)
                     if mode == "join":
                         pair_fill_t[side] = rec["fill_ms"] if not rec["would_cross"] else None
@@ -219,6 +272,8 @@ def simulate_maker_entries(config, *, series: str = "KXBTC15M",
         "decisions": decisions,
         "double_fill_pairs": double_fill_pairs,
         "horizons": horizons,
+        "fill_model": fill_model,
+        "n_tickers_with_prints": len(prints_by_tk),
         "improve_cents": improve_cents,
         "maker_fee_rate": maker_fee_rate,
         "maker_fee_status": maker_fees.status,
@@ -392,12 +447,21 @@ def write_maker_entry_report(config, sim: dict, analysis: dict) -> dict:
     tf = sim["taker_fee_stats"]
     df = analysis["double_fill"]
     v = analysis["verdict"]
+    fm = sim.get("fill_model", "quote")
+    fill_blurb = {
+        "quote": ("Conservative QUOTE-crossing fill model: a resting bid is counted filled ONLY "
+                  "when a later snapshot's same-side ask crosses to/below the limit, so fills are "
+                  "undercounted AND adversely selected — every maker EV here is a LOWER BOUND."),
+        "prints-through": ("REAL trade prints, CERTAIN fills only: a resting bid counts as filled "
+                           "when the tape traded strictly THROUGH the level (queue-position-free). "
+                           "Conservative on fill count, but fills/outcomes come from actual flow."),
+        "prints-front": ("REAL trade prints, FRONT-OF-QUEUE assumption: a resting bid counts as "
+                         "filled when the tape traded AT or through the level. OPTIMISTIC upper "
+                         "bound — real queue position would forfeit some at-level fills."),
+    }[fm]
     lines = [
-        f"# Kalshi maker-entry feasibility study — {sim['series']}", "",
-        "> READ-ONLY research. Conservative trade-through fill model: a resting bid is counted "
-        "filled ONLY when a later snapshot's same-side ask crosses to/below the limit, so fills "
-        "are undercounted AND adversely selected — every maker EV here is a LOWER BOUND. "
-        "No orders, no paper, no promotion; live disabled.", "",
+        f"# Kalshi maker-entry feasibility study — {sim['series']} (fill model: {fm})", "",
+        f"> READ-ONLY research. {fill_blurb} No orders, no paper, no promotion; live disabled.", "",
         f"- windows: {sim['n_windows_with_label_and_books']}  decision points: "
         f"{sim['n_decision_points']}  (one per market-minute; sides×modes per point)",
         f"- cost to cross today: spread mean/median/p90 = {_f(sp['mean'], 3)}/"
@@ -455,12 +519,14 @@ def write_maker_entry_report(config, sim: dict, analysis: dict) -> dict:
 
 def run_maker_entry_study(config, *, series: str = "KXBTC15M", improve_cents: int = 1,
                           maker_fee_rate: float = 0.0,
-                          rest_horizons: Optional[list] = None) -> dict:
+                          rest_horizons: Optional[list] = None,
+                          fill_model: str = "quote") -> dict:
     sim = simulate_maker_entries(config, series=series, improve_cents=improve_cents,
-                                 rest_horizons=rest_horizons, maker_fee_rate=maker_fee_rate)
+                                 rest_horizons=rest_horizons, maker_fee_rate=maker_fee_rate,
+                                 fill_model=fill_model)
     analysis = analyze_maker_entries(sim)
     files = write_maker_entry_report(config, sim, analysis)
-    return {"series": series, "status": "OK",
+    return {"series": series, "status": "OK", "fill_model": fill_model,
             "n_windows": sim["n_windows_with_label_and_books"],
             "n_decision_points": sim["n_decision_points"],
             "spread_stats": sim["spread_stats"], "taker_fee_stats": sim["taker_fee_stats"],
