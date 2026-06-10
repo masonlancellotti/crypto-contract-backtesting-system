@@ -205,6 +205,33 @@ class KalshiClient:
                 return {"orderbook_fp": {"yes_dollars": [], "no_dollars": []}}
             raise
 
+    def get_trades(
+        self,
+        *,
+        ticker: Optional[str] = None,
+        min_ts: Optional[int] = None,
+        max_ts: Optional[int] = None,
+        limit: int = 100,
+        max_pages: int = 5,
+    ) -> list[dict]:
+        """Public trade prints (no auth): GET /markets/trades, cursor-paginated.
+
+        ``min_ts``/``max_ts`` are epoch SECONDS (Kalshi convention). Returns raw
+        trade dicts: ticker, trade_id, created_time, yes/no price (dollars),
+        count, and ``taker_side`` ("yes"/"no" — which side aggressed)."""
+        out: list[dict] = []
+        cursor = None
+        for _ in range(max_pages):
+            params = {"ticker": ticker, "min_ts": min_ts, "max_ts": max_ts,
+                      "limit": limit, "cursor": cursor}
+            data = self._get("/markets/trades", params)
+            trades = data.get("trades") or []
+            out.extend(trades)
+            cursor = data.get("cursor") or None
+            if not cursor or not trades:
+                break
+        return out
+
     def list_markets(
         self,
         *,

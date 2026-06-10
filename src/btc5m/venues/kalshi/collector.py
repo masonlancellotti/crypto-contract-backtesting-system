@@ -74,6 +74,72 @@ def _poll_underlying_once(rec, und_clients, micro_state) -> tuple[int, int]:
     return events, errors
 
 
+class _TradePoller:
+    """Polls PUBLIC Kalshi trade prints (no auth) and records normalized rows.
+
+    Trade prints are the missing input for honest maker-fill modeling (see
+    RESEARCH_LEDGER.md legs 13/14): ``taker_side`` says which side aggressed, so
+    the resting (maker) side of every print is known. One bounded HTTP call per
+    poll covers ALL series tickers via a min_ts watermark + trade_id dedupe.
+    Failures never disturb the book loop."""
+
+    def __init__(self, client, series: str, poll_interval_s: float = 5.0):
+        self.client = client
+        self.series = series
+        self.poll_interval_s = poll_interval_s
+        self._last_poll_mono = 0.0
+        self._watermark_s: Optional[int] = None
+        self._seen: dict[str, None] = {}   # insertion-ordered bounded id cache
+
+    def poll(self, rec, *, mono_now: float, recv_ms: int) -> tuple[int, int]:
+        if mono_now - self._last_poll_mono < self.poll_interval_s:
+            return 0, 0
+        self._last_poll_mono = mono_now
+        get_trades = getattr(self.client, "get_trades", None)
+        if get_trades is None:
+            return 0, 0
+        try:
+            trades = get_trades(min_ts=self._watermark_s, limit=200, max_pages=3)
+        except Exception:  # noqa: BLE001
+            return 0, 1
+        wrote = 0
+        max_ts_s = self._watermark_s or 0
+        for t in trades:
+            tk = t.get("ticker") or ""
+            tid = t.get("trade_id")
+            if not tk.startswith(self.series) or not tid or tid in self._seen:
+                continue
+            created_ms = iso_to_ms(t.get("created_time"))
+            row = {
+                "venue": "kalshi", "series_ticker": self.series, "market_ticker": tk,
+                "trade_id": tid, "created_time_ms": created_ms, "recv_ms": recv_ms,
+                "yes_price": _fnum(t.get("yes_price_dollars", t.get("yes_price"))),
+                "no_price": _fnum(t.get("no_price_dollars", t.get("no_price"))),
+                "count": _fnum(t.get("count_fp", t.get("count"))),
+                "taker_side": t.get("taker_side"),
+                "is_block_trade": bool(t.get("is_block_trade")),
+            }
+            rec.record_normalized("kalshi_trades", row)
+            self._seen[tid] = None
+            wrote += 1
+            if created_ms:
+                max_ts_s = max(max_ts_s, created_ms // 1000)
+        # watermark backs off 2s to tolerate same-second arrivals (dedupe absorbs
+        # the overlap) but never regresses below its current value
+        if max_ts_s:
+            self._watermark_s = max(self._watermark_s or 0, max_ts_s - 2)
+        while len(self._seen) > 5000:
+            self._seen.pop(next(iter(self._seen)))
+        return wrote, 0
+
+
+def _fnum(x) -> Optional[float]:
+    try:
+        return float(x) if x is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def run_continuous(
     cfg,
     *,
@@ -99,6 +165,8 @@ def run_continuous(
     The runtime mode comes from ``KALSHI_MODEL_RUNTIME_MODE`` (disabled|shadow|paper).
     """
     client = KalshiClient(cfg)
+    trade_poller = _TradePoller(client, series)
+    trade_events = 0
     fee_model = KalshiFeeModel.from_config(cfg)
     model = BaselineModel(cfg)
     runtime_mode = getattr(cfg, "model_runtime_mode", "disabled")
@@ -228,6 +296,10 @@ def run_continuous(
                     und_events += _ue
                     errors += _err
                     last_und_poll = time.monotonic()
+                    _tw, _terr = trade_poller.poll(rec, mono_now=time.monotonic(),
+                                                   recv_ms=now_ms())
+                    trade_events += _tw
+                    errors += _terr
                     if deribit_client is not None:
                         nowm = time.monotonic()
                         if nowm - last_deribit_poll >= deribit_poll_interval_s:
@@ -331,6 +403,8 @@ def run_continuous(
                 totals["normalized_orderbook_rows"] += norm_ob
                 totals["underlying_events"] += und_events
                 totals["feature_rows"] += feat_rows
+                totals["trade_prints"] = totals.get("trade_prints", 0) + trade_events
+                trade_events = 0
 
                 # ---- periodic backfill ----
                 labels_written = 0
