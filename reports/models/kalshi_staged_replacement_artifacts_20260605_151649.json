@@ -1,0 +1,131 @@
+{
+  "created_at": "2026-06-05T15:16:49.235780+00:00",
+  "series": "KXBTC15M",
+  "promotion": "NONE \u2014 staged only",
+  "recommended_replacement_candidate": "identity_raw",
+  "replacement_eligible_for_promotion_review": true,
+  "staged_artifacts": [
+    {
+      "calibrator_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_identity_raw_20260605_151649.pkl",
+      "summary_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_identity_raw_20260605_151649.json",
+      "staged": true,
+      "tradable_status": "STAGED_NON_PROMOTED",
+      "candidate": "identity_raw",
+      "method": "identity",
+      "metrics": {
+        "ece_window": 0.055018364312267656,
+        "ece_row": 0.036691731954837624,
+        "brier": 0.12695784335100735,
+        "log_loss": 0.40313588385346333,
+        "yes_overprediction_cents": -3.596000173347247
+      }
+    },
+    {
+      "calibrator_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_platt_20260605_151649.pkl",
+      "summary_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_platt_20260605_151649.json",
+      "staged": true,
+      "tradable_status": "STAGED_NON_PROMOTED",
+      "candidate": "platt",
+      "method": "platt",
+      "metrics": {
+        "ece_window": 0.09549526119402986,
+        "ece_row": 0.05310946273758643,
+        "brier": 0.13009566154027088,
+        "log_loss": 0.41839493156403346,
+        "yes_overprediction_cents": -5.160867150218934
+      }
+    },
+    {
+      "calibrator_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_fresh_isotonic_20260605_151649.pkl",
+      "summary_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_fresh_isotonic_20260605_151649.json",
+      "staged": true,
+      "tradable_status": "STAGED_NON_PROMOTED",
+      "candidate": "fresh_isotonic",
+      "method": "isotonic",
+      "metrics": {
+        "ece_window": 0.0871167674858223,
+        "ece_row": 0.06144757342282785,
+        "brier": 0.1320777749396142,
+        "log_loss": 0.4502374894927439,
+        "yes_overprediction_cents": -5.457812789524557
+      }
+    },
+    {
+      "artifact_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_market_shrink_a0.0_20260605_151649.pkl",
+      "summary_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_market_shrink_a0.0_20260605_151649.json",
+      "candidate": "market_shrunk_a0.0",
+      "method": "market_shrink",
+      "tradable_status": "DIAGNOSTIC_ONLY",
+      "metrics": {
+        "ece_window": 0.028359999999999993,
+        "ece_row": 0.02719024646604788,
+        "brier": 0.12176952427965135,
+        "log_loss": 0.38368023344282803,
+        "yes_overprediction_cents": -1.3769629792749927
+      },
+      "check": "DIAGNOSTIC_ONLY"
+    },
+    {
+      "artifact_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_market_shrink_a0.05_20260605_151649.pkl",
+      "summary_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_market_shrink_a0.05_20260605_151649.json",
+      "candidate": "market_shrunk_a0.05",
+      "method": "market_shrink",
+      "tradable_status": "DIAGNOSTIC_ONLY",
+      "metrics": {
+        "ece_window": 0.025239597701149426,
+        "ece_row": 0.026444476493500926,
+        "brier": 0.12176524517231338,
+        "log_loss": 0.3838601302465105,
+        "yes_overprediction_cents": -1.48791483897861
+      },
+      "check": "DIAGNOSTIC_ONLY"
+    },
+    {
+      "artifact_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_market_shrink_a0.1_20260605_151649.pkl",
+      "summary_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_market_shrink_a0.1_20260605_151649.json",
+      "candidate": "market_shrunk_a0.1",
+      "method": "market_shrink",
+      "tradable_status": "DIAGNOSTIC_ONLY",
+      "metrics": {
+        "ece_window": 0.02616956106870229,
+        "ece_row": 0.024938229014409792,
+        "brier": 0.1217887234398076,
+        "log_loss": 0.384131034052912,
+        "yes_overprediction_cents": -1.5988666986822164
+      },
+      "check": "DIAGNOSTIC_ONLY"
+    },
+    {
+      "artifact_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_market_shrink_a0.2_20260605_151649.pkl",
+      "summary_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_market_shrink_a0.2_20260605_151649.json",
+      "candidate": "market_shrunk_a0.2",
+      "method": "market_shrink",
+      "tradable_status": "DIAGNOSTIC_ONLY",
+      "metrics": {
+        "ece_window": 0.022645930902111328,
+        "ece_row": 0.023885741673730098,
+        "brier": 0.1219189520992926,
+        "log_loss": 0.38491814660891066,
+        "yes_overprediction_cents": -1.8207704180894402
+      },
+      "check": "DIAGNOSTIC_ONLY"
+    },
+    {
+      "artifact_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_market_shrink_a0.4_20260605_151649.pkl",
+      "summary_file": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_market_shrink_a0.4_20260605_151649.json",
+      "candidate": "market_shrunk_a0.4",
+      "method": "market_shrink",
+      "tradable_status": "DIAGNOSTIC_ONLY",
+      "metrics": {
+        "ece_window": 0.026185931558935335,
+        "ece_row": 0.028162559222412398,
+        "brier": 0.12251249791624882,
+        "log_loss": 0.38741792098463046,
+        "yes_overprediction_cents": -2.264577856903899
+      },
+      "check": "DIAGNOSTIC_ONLY"
+    }
+  ],
+  "live_submission_allowed": false,
+  "note": "All artifacts STAGED_NON_PROMOTED / DIAGNOSTIC_ONLY; runtime never auto-loads them; the promotion manifest was NOT modified."
+}

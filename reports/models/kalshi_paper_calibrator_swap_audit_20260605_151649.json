@@ -1,0 +1,87 @@
+{
+  "created_at": "2026-06-05T15:16:49.551033+00:00",
+  "series": "KXBTC15M",
+  "action": "SWAP_REVIEW",
+  "current_promoted_calibrator": "isotonic",
+  "recommended_candidate": "identity_raw",
+  "no_edge_demonstrated": true,
+  "pass_final": 0,
+  "promotion_performed": false,
+  "paper_disabled": true,
+  "live_disabled": true,
+  "edge_gates_unchanged": true,
+  "reversible": true,
+  "candidates": {
+    "identity_raw": {
+      "available": true,
+      "staged_path": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_identity_raw_20260605_151649.pkl",
+      "calibrator_method": "identity",
+      "model_name": "microstructure_logistic",
+      "eligible": true,
+      "better_window_ece": true,
+      "not_worse_brier": true,
+      "reduces_yes_overprediction": true,
+      "staged_non_promoted": true,
+      "blockers": [],
+      "metrics_before": {
+        "ece_window": 0.08647016822429908,
+        "brier": 0.1360708286157962,
+        "yes_overprediction_cents": 6.3436500379709155
+      },
+      "metrics_after": {
+        "ece_window": 0.055018364312267656,
+        "brier": 0.12695784335100735,
+        "yes_overprediction_cents": -3.596000173347247
+      }
+    },
+    "platt": {
+      "available": true,
+      "staged_path": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_platt_20260605_151649.pkl",
+      "calibrator_method": "platt",
+      "model_name": "microstructure_logistic",
+      "eligible": false,
+      "better_window_ece": false,
+      "not_worse_brier": true,
+      "reduces_yes_overprediction": true,
+      "staged_non_promoted": true,
+      "blockers": [
+        "does_not_improve_window_ece"
+      ],
+      "metrics_before": {
+        "ece_window": 0.08647016822429908,
+        "brier": 0.1360708286157962,
+        "yes_overprediction_cents": 6.3436500379709155
+      },
+      "metrics_after": {
+        "ece_window": 0.09549526119402986,
+        "brier": 0.13009566154027088,
+        "yes_overprediction_cents": -5.160867150218934
+      }
+    },
+    "fresh_isotonic": {
+      "available": true,
+      "staged_path": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\staged\\kalshi_replacement_fresh_isotonic_20260605_151649.pkl",
+      "calibrator_method": "isotonic",
+      "model_name": "microstructure_logistic",
+      "eligible": false,
+      "better_window_ece": false,
+      "not_worse_brier": true,
+      "reduces_yes_overprediction": true,
+      "staged_non_promoted": true,
+      "blockers": [
+        "does_not_improve_window_ece"
+      ],
+      "metrics_before": {
+        "ece_window": 0.08647016822429908,
+        "brier": 0.1360708286157962,
+        "yes_overprediction_cents": 6.3436500379709155
+      },
+      "metrics_after": {
+        "ece_window": 0.0871167674858223,
+        "brier": 0.1320777749396142,
+        "yes_overprediction_cents": -5.457812789524557
+      }
+    }
+  },
+  "live_submission_allowed": false
+}

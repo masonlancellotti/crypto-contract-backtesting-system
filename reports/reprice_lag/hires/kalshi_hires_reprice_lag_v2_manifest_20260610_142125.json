@@ -1,0 +1,54 @@
+{
+  "generated_utc": "20260610_142125",
+  "used_v2": true,
+  "live_submission_allowed": false,
+  "config": {
+    "shock_window": "1s",
+    "shock_threshold_bps": 5.0,
+    "min_depth": 1.0,
+    "min_net_edge_cents": 0.0,
+    "min_seconds_to_close": 30.0,
+    "max_seconds_to_close": 900.0,
+    "near_line_only": false,
+    "near_line_usd": 25.0,
+    "max_source_age_ms": 2000.0,
+    "max_book_age_ms": 1500.0,
+    "dedupe_seconds": 20.0,
+    "conservative_buffer_cents": 3.0,
+    "horizon_ms": null,
+    "include_deribit": true
+  },
+  "n_files": 129,
+  "n_rows": 214221,
+  "n_windows": 58,
+  "days": [
+    "2026-06-10"
+  ],
+  "windows_with_label": 57,
+  "line_filled_from_labels": 152510,
+  "missingness": {
+    "yes_ask": 3700,
+    "no_ask": 3279
+  },
+  "coverage_by_horizon": {
+    "250": 0.9548721681375671,
+    "500": 0.9591483941406606,
+    "1000": 0.9988172140842507,
+    "2000": 0.9989991811482122,
+    "5000": 0.9978163952324629,
+    "10000": 0.9963606587207715,
+    "15000": 0.9948139386770994,
+    "30000": 0.9887180420343917,
+    "60000": 0.9745246110454008
+  },
+  "proxy": "lognormal_distance_to_line(min/max of coinbase/binance mids; realized_vol_60s; line=settlement window-open target); DIAGNOSTIC, not truth",
+  "deribit": {
+    "present": true,
+    "fields": [
+      "deribit_dvol",
+      "deribit_btc_iv_index",
+      "deribit_historical_vol"
+    ],
+    "note": "Deribit is SLOW regime context (separate ~30s collector); joined point-in-time later. Not in the sub-second hot path."
+  }
+}

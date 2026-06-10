@@ -1,0 +1,50 @@
+# Kalshi paper-candidate policy — EXAMPLE config (conservative defaults).
+#
+# This file is OPTIONAL and is NOT required to run the code or tests; env vars
+# (KALSHI_*) and built-in defaults govern the policy (env wins). Copy to a local
+# file and adapt if you prefer YAML. The policy NEVER trades live and can only emit
+# PAPER_CANDIDATE when enabled AND a trained + calibrated + non-diagnostic +
+# sufficiently-backtested model passes every gate below.
+
+model_requirements:
+  enabled: false                      # KALSHI_PAPER_POLICY_ENABLED
+  require_trained_model: true         # KALSHI_REQUIRE_TRAINED_MODEL
+  require_calibrated_model: true      # KALSHI_REQUIRE_CALIBRATED_MODEL
+  require_backtest_evidence: true     # KALSHI_REQUIRE_BACKTEST_EVIDENCE
+  require_non_diagnostic_model: true  # KALSHI_REQUIRE_NON_DIAGNOSTIC_MODEL
+  min_calibration_windows: 150        # KALSHI_MIN_CALIBRATION_WINDOWS
+  min_backtest_windows: 60            # KALSHI_MIN_BACKTEST_WINDOWS
+
+edge_thresholds:
+  min_net_edge_cents: 2               # KALSHI_MIN_NET_EDGE_CENTS
+  min_raw_edge_cents: 3               # KALSHI_MIN_RAW_EDGE_CENTS
+  uncertainty_buffer_cents: 1         # KALSHI_UNCERTAINTY_BUFFER_CENTS
+  slippage_buffer_cents: 0            # KALSHI_SLIPPAGE_BUFFER_CENTS
+  max_yes_price_cents: 95             # KALSHI_MAX_YES_PRICE_CENTS
+  max_no_price_cents: 95              # KALSHI_MAX_NO_PRICE_CENTS
+
+freshness_thresholds:
+  max_book_age_ms: 1000               # KALSHI_MAX_BOOK_AGE_MS
+  max_underlying_age_ms: 2000         # KALSHI_MAX_UNDERLYING_AGE_MS
+  max_deribit_age_ms: 180000          # KALSHI_MAX_DERIBIT_AGE_MS
+  require_deribit_fresh: false        # KALSHI_REQUIRE_DERIBIT_FRESH (Deribit is optional context)
+
+liquidity_thresholds:
+  max_spread_cents: 10                # KALSHI_MAX_SPREAD_CENTS
+  min_top_depth_contracts: 1          # KALSHI_MIN_TOP_DEPTH_CONTRACTS
+
+time_window:
+  min_seconds_to_close: 5             # KALSHI_MIN_SECONDS_TO_CLOSE
+  max_seconds_to_close: 900           # KALSHI_MAX_SECONDS_TO_CLOSE
+
+risk_limits:
+  max_trades_per_window: 1            # KALSHI_MAX_TRADES_PER_WINDOW
+  max_open_positions: 1               # KALSHI_MAX_OPEN_POSITIONS
+  max_position_per_contract: 1        # KALSHI_MAX_POSITION_PER_CONTRACT
+
+paper_execution_settings:
+  paper_default_size: 1               # KALSHI_PAPER_DEFAULT_SIZE
+  allow_diagnostic_paper: false       # KALSHI_ALLOW_DIAGNOSTIC_PAPER
+
+notification_settings:
+  notify_paper_candidates: true       # KALSHI_NOTIFY_PAPER_CANDIDATES (Noop unless Pushover configured)

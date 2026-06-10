@@ -1,0 +1,20 @@
+# Paper-mode overrides — SAFE. No real orders are ever submitted in this mode.
+# Inherits everything from default.yaml; only differences are listed here.
+
+trading:
+  mode: paper
+  live_trading_enabled: false
+  require_manual_confirmation: true
+  kill_switch_enabled: true
+
+execution:
+  assume_midpoint_fills: false
+  slippage_model: depth_walk
+  min_net_edge_cents: 2.0
+
+paper:
+  starting_bankroll: 1000.0
+
+data:
+  record_raw: true
+  record_normalized: true

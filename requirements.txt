@@ -1,0 +1,21 @@
+# Core (scaffolds run with just these; both are light).
+pyyaml>=6.0
+python-dotenv>=1.0
+
+# Data feeds (install when wiring real adapters): pip install -e ".[data]"
+# websockets>=12.0
+# requests>=2.31
+# aiohttp>=3.9
+
+# Models (install when training): pip install -e ".[models]"
+# numpy>=1.26
+# pandas>=2.1
+# scikit-learn>=1.4
+# lightgbm>=4.1
+
+# Notifications: Pushover uses only the standard library (urllib) — no deps.
+
+# Dev: pip install -e ".[dev]"
+# pytest>=8.0
+# ruff>=0.5
+# mypy>=1.8

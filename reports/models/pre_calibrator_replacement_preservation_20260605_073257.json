@@ -1,0 +1,17 @@
+{
+  "purpose": "PRESERVE promoted/active runtime state across calibrator-replacement work",
+  "created_at": "2026-06-05T07:32:57.596311+00:00",
+  "files": {
+    "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\paper_promoted\\kalshi_paper_promotion_manifest.json": "95fc127878ebb8164fbde636de2856d44c349f337e26385cc976994fbfe3f47f",
+    "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\paper_promoted\\paper_calibrator_KXBTC15M_20260603_212839.pkl": "864db7038b70f1af407f372b547955478d3305015807e7393ab0ebc99cd1830e",
+    "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\paper_promoted\\paper_model_KXBTC15M_20260603_212839.pkl": "7e48fc64ce62bdb0d658c13ced186d633f893f7e11e81a90f54b773af0c31c2a",
+    "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\kalshi_calibrator_20260602_074350.pkl": "2161a90e2de79c38bd0f317f876fa20ece73ac1cdb53b72e88d4be0e97f80128",
+    "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\kalshi_calibrator_20260602_172531.pkl": "2ca17d1bf232b207e4d7a7cf17cf173332321a40580cb40a2158011446ab7ebd",
+    "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\kalshi_distance_time_vol_20260602_072541.pkl": "fad6d22ba40b1d6981082bfc5f8fd1b5df95885ee02f5016cad78fecee41af1c",
+    "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\kalshi_distance_time_vol_20260602_172513.pkl": "d36d9dd2f8131ea21ef12f751a5d57f665cc49fc0723b08150f1b94595f6be5b",
+    "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\kalshi_microstructure_logistic_20260602_072544.pkl": "2bdef47a5bf2f680e2f9999f1c1f8253daef99025306e4ed089280bdf08415f4",
+    "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\models\\kalshi_microstructure_logistic_20260602_172520.pkl": "0cce96cb816a9a7ec0dc206c16389596f6ab2aabb3071ba7f91f686e8deeae81"
+  },
+  "n_files": 9,
+  "live_submission_allowed": false
+}

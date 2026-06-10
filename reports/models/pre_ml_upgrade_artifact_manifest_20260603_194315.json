@@ -1,0 +1,71 @@
+{
+  "created_at": "2026-06-03T19:43:15.726824+00:00",
+  "data_models_dir": "C:/Users/mason/Downloads/polymarket-btc-five-mins/data/models",
+  "note": "Active runtime-scanned artifacts only; data/models/staged/ is NOT scanned by runtime.",
+  "runtime_selected": {
+    "latest_model_pkl": {
+      "path": "data/models/kalshi_microstructure_logistic_20260602_172520.pkl",
+      "size": 2357,
+      "modified": "2026-06-02T17:25:20.207791+00:00",
+      "sha256": "0cce96cb816a9a7ec0dc206c16389596f6ab2aabb3071ba7f91f686e8deeae81"
+    },
+    "latest_calibrator_pkl": {
+      "path": "data/models/kalshi_calibrator_20260602_172531.pkl",
+      "size": 33651,
+      "modified": "2026-06-02T17:25:31.784588+00:00",
+      "sha256": "2ca17d1bf232b207e4d7a7cf17cf173332321a40580cb40a2158011446ab7ebd"
+    }
+  },
+  "model_pkls": [
+    {
+      "path": "data/models/kalshi_calibrator_20260602_074350.pkl",
+      "size": 9713,
+      "modified": "2026-06-02T07:43:50.099428+00:00",
+      "sha256": "2161a90e2de79c38bd0f317f876fa20ece73ac1cdb53b72e88d4be0e97f80128"
+    },
+    {
+      "path": "data/models/kalshi_calibrator_20260602_172531.pkl",
+      "size": 33651,
+      "modified": "2026-06-02T17:25:31.784588+00:00",
+      "sha256": "2ca17d1bf232b207e4d7a7cf17cf173332321a40580cb40a2158011446ab7ebd"
+    },
+    {
+      "path": "data/models/kalshi_distance_time_vol_20260602_072541.pkl",
+      "size": 1692,
+      "modified": "2026-06-02T07:25:41.903706+00:00",
+      "sha256": "fad6d22ba40b1d6981082bfc5f8fd1b5df95885ee02f5016cad78fecee41af1c"
+    },
+    {
+      "path": "data/models/kalshi_distance_time_vol_20260602_172513.pkl",
+      "size": 1737,
+      "modified": "2026-06-02T17:25:13.272491+00:00",
+      "sha256": "d36d9dd2f8131ea21ef12f751a5d57f665cc49fc0723b08150f1b94595f6be5b"
+    },
+    {
+      "path": "data/models/kalshi_microstructure_logistic_20260602_072544.pkl",
+      "size": 2354,
+      "modified": "2026-06-02T07:25:44.767176+00:00",
+      "sha256": "2bdef47a5bf2f680e2f9999f1c1f8253daef99025306e4ed089280bdf08415f4"
+    },
+    {
+      "path": "data/models/kalshi_microstructure_logistic_20260602_172520.pkl",
+      "size": 2357,
+      "modified": "2026-06-02T17:25:20.207791+00:00",
+      "sha256": "0cce96cb816a9a7ec0dc206c16389596f6ab2aabb3071ba7f91f686e8deeae81"
+    }
+  ],
+  "latest_pointers": [
+    {
+      "path": "data/models/kalshi_model_dataset_latest.jsonl",
+      "size": 49077555,
+      "modified": "2026-06-03T19:19:39.666596+00:00",
+      "sha256": "779b3a4c75fe4df1217c44c363c3846ba2daa7236e1ed7ecd3284d3d4ea4f56a"
+    },
+    {
+      "path": "data/models/kalshi_feature_schema.json",
+      "size": 14088,
+      "modified": "2026-06-03T19:19:39.668596+00:00",
+      "sha256": "26e146b9eb498472865659ba89374e723c2f6d8c1491dd14ec2057778d4e386d"
+    }
+  ]
+}

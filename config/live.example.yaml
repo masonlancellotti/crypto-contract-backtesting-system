@@ -1,0 +1,73 @@
+# LIVE EXAMPLE — TEMPLATE ONLY. Copy to config/live.yaml (gitignored) and edit.
+#
+# !!! DANGER ZONE !!!
+# PRIMARY venue is KALSHI BTC 15m (KXBTC15M). This file does NOT enable live trading
+# by itself. As of Prompt 7 the repo only has live-READINESS scaffolding (dry-run,
+# inspectable, never submitting). Live trading would require ALL of, via a SEPARATE
+# future prompt after real paper evidence:
+#   1. trading.mode = live
+#   2. trading.live_trading_enabled = true        (and LIVE_TRADING_ENABLED=true env)
+#   3. KALSHI_LIVE_SUBMIT_ENABLED=true AND KALSHI_LIVE_DRY_RUN_ONLY=false
+#   4. kill switch off                            (KILL_SWITCH_ENABLED=false)
+#   5. Kalshi auth present in env (KALSHI_KEY_ID + KALSHI_PRIVATE_KEY_PATH)
+#   6. approved non-diagnostic model + valid calibrator + valid backtest
+#   7. data/models/kalshi_live_approval.json with evidence_approved_for_live=true (manual)
+#   8. risk checks pass + manual confirmation satisfied
+# Do NOT enable live until backtest + paper evidence exists. Do NOT put secrets
+# in this file — credentials come from environment variables only.
+
+trading:
+  mode: live                  # required for live, but NOT sufficient on its own
+  live_trading_enabled: false # MUST be explicitly set true (here AND in env)
+  require_manual_confirmation: true
+  kill_switch_enabled: true   # MUST be turned off deliberately to trade
+
+risk:
+  # Set CONSERVATIVE real limits before enabling. Nulls are treated as "unset"
+  # and the risk manager will REJECT orders until concrete limits are provided.
+  max_order_size: null
+  max_position_per_contract: null
+  max_daily_loss: null
+  max_open_risk: null
+  max_trades_per_hour: null
+  max_quote_age_ms: 750
+  max_clock_skew_ms: 1000
+  reject_crossed_book: true
+  require_settlement_metadata: true
+  max_calibration_age_hours: 12
+
+execution:
+  assume_midpoint_fills: false   # never
+  taker_fee_bps: 0.0             # set the real fee schedule
+  min_net_edge_cents: 3.0        # demand more edge live than in paper
+  slippage_model: depth_walk
+
+# Kalshi credentials are read from environment ONLY (see .env.example):
+#   KALSHI_KEY_ID, KALSHI_PRIVATE_KEY_PATH (RSA key in a gitignored local file)
+# (Polymarket is dormant/reference; not the live venue.)
+
+# Live-readiness scaffolding — ALL safe/locked by default (Prompt 7 adds inspection
+# only; nothing here flips live on). A future prompt must change these deliberately.
+live_readiness:
+  enabled: false
+  dry_run_only: true
+  submit_enabled: false
+  allow_private_reads: false
+  allow_market_orders: false          # market orders are never allowed
+  require_limit_order: true
+  require_fok_or_ioc: true
+  require_approved_model: true
+  require_valid_calibrator: true
+  require_valid_backtest: true
+  require_paper_evidence: true
+  max_live_order_size: 1
+  max_live_notional: 10
+  max_live_daily_loss: 10
+  max_live_open_exposure: 10
+
+sources:
+  kalshi:
+    enabled: true                     # public REST market data (no auth)
+
+notifications:
+  provider: auto                      # pushover if configured, else Noop

@@ -1,0 +1,66 @@
+{
+  "date": "20260602",
+  "notification_line": "BTC 15m EOD: 240 signals | 0 paper fills | net $+0.00 paper | windows 86/60 | live disabled",
+  "notified": false,
+  "gate": {
+    "gate_windows": 86,
+    "feature_backed_official_windows": 89,
+    "eligible_after_purge_embargo": 86,
+    "orphan_labels_excluded": 974,
+    "usable_rows": 10867,
+    "backtest_gate_threshold": 60,
+    "train_gate_threshold": 150,
+    "train_gate_min_rows": 500,
+    "windows_remaining_backtest": 0,
+    "windows_remaining_train": 64,
+    "recent_windows_1h": 4,
+    "recent_windows_3h": 12,
+    "recent_windows_12h": 48,
+    "capture_rate_per_hour": 4.0,
+    "eta_backtest_hours_ideal_4ph": 0.0,
+    "eta_backtest_hours_actual": 0.0,
+    "bottleneck": "windows",
+    "backtest_allowed": true,
+    "train_allowed": false,
+    "next_command": "backtest gate reached \u2014 run kalshi-backtest-baselines"
+  },
+  "collector": {
+    "verdict": "ACTIVE",
+    "underlying_ok": true
+  },
+  "paper": {
+    "status": "OK",
+    "date": "20260602",
+    "ledger_rows": 240,
+    "decisions_by_state": {
+      "REJECTED": 186,
+      "MANUAL_REVIEW": 48,
+      "WATCH": 3,
+      "NO_ACTION": 3
+    },
+    "fill_status_counts": {
+      "not_traded": 240
+    },
+    "paper_pnl": 0.0,
+    "pnl_by_side": {},
+    "top_reason_codes": {
+      "INVALID_OR_INCOMPLETE_BOOK": 186,
+      "UNCALIBRATED_MODEL": 48,
+      "THIN_BOOK": 9,
+      "EDGE_BELOW_MIN(2.0c<2.0c)": 2,
+      "EDGE_BELOW_MIN(-2.0c<2.0c)": 2,
+      "EDGE_BELOW_MIN(-1.0c<2.0c)": 1
+    },
+    "lock_events": {},
+    "open_paper_positions": 0,
+    "locked_pairs": 0,
+    "naked_yes": 0,
+    "naked_no": 0
+  },
+  "model_status": "NON_TRADABLE_DIAGNOSTIC_ONLY",
+  "safety_headline": "LIVE TRADING DISABLED",
+  "next_actions": [
+    "train + calibrate + backtest a model (currently diagnostic/missing)",
+    "safety: live disabled \u2014 keep it that way until evidence + a separate live-enable step"
+  ]
+}

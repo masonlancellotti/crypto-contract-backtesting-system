@@ -1,0 +1,68 @@
+# --- Secrets / local config ---
+.env
+.env.*
+!.env.example
+*.local.yaml
+config/live.yaml
+secrets/
+*.key
+*.pem
+
+# --- Data & artifacts ---
+data/raw/
+data/normalized/
+data/features/
+data/labels/
+data/models/
+data/audit/                 # live-readiness dry-run audit logs (no secrets, but local-only)
+data/decisions/
+data/paper/
+!data/models/kalshi_live_approval.example.json   # committable template; real approval file stays ignored
+*.parquet
+*.feather
+*.h5
+*.pkl
+*.joblib
+*.csv
+*.jsonl
+*.ndjson
+# keep directory placeholders
+!**/.gitkeep
+
+# --- Reports (large outputs) ---
+reports/calibration/
+reports/backtests/
+reports/paper/
+*.html
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Python build / cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# --- Virtualenvs ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
