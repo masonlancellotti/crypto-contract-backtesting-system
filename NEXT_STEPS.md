@@ -6,24 +6,26 @@ The data pipeline is healthy and the research framework answers questions fast.
 What's missing is an edge, and the ledger shows where the remaining candidates
 live. The next steps are mostly *decisions and inputs*, not code:
 
-## 1. Generate a Kalshi API key (user action; free; unlocks the most)
-Kalshi gates even read-only market-data WebSocket behind an account API key
-(RSA). With it:
+## 1. ~~Kalshi API key~~ DONE (2026-06-10)
+Credentials were already configured in `.env`. `kalshi-ws-feasibility` verified
+the read-only market-data WebSocket: connected + subscribed, ~410 book
+updates/s, median receive age 14ms. `KALSHI_HIRES_BOOK_SOURCE=auto` is set, so
+the hi-res recorder uses WS book deltas (REST fallback). Keep the loop running:
 ```powershell
-# verify the key works, read-only (no orders, no account writes):
-python -m btc5m.cli kalshi-ws-feasibility --series KXBTC15M
-# then run the hi-res recorder on WS book deltas instead of ~1.1s REST polls:
-#   KALSHI_HIRES_BOOK_SOURCE=websocket
-python -m btc5m.cli kalshi-hires-record --series KXBTC15M
+python -m btc5m.cli kalshi-hires-record-loop --series KXBTC15M --session-seconds 900
+python -m btc5m.cli kalshi-hires-status     # check accumulation
 ```
-This is the only way to resolve the three OPEN legs (maker entries, both-sides
-quoting, sub-second stale-quote) — REST snapshots at 1–4s provably cannot.
-Set `KALSHI_KEY_ID` + `KALSHI_PRIVATE_KEY_PATH` in `.env` (never in chat).
 
-## 2. Add public trade-print collection (small code task, no auth)
-Kalshi exposes recent trades via public REST. Recording them alongside books
-would tighten the maker-entry fill model (real fills instead of trade-through
-lower bounds). Worth doing even before the API key exists.
+## 2. ~~Trade-print collection~~ DONE (2026-06-10)
+`kalshi-collect-continuous` now records public trade prints (`kalshi_trades`
+stream, taker_side included) every ~5s alongside books.
+
+## 2b. Re-run the blocked studies once WS + trade-print data accumulates
+After a few hundred windows of sub-second book data and trade prints
+(~2-4 days of the two loops running):
+- maker-entry v2 with REAL fills (join prints to resting-quote hypotheses)
+- reprice-lag v3 on WS-resolution joins (the +250/500ms horizons that were
+  0%-covered under REST polling)
 
 ## 3. Verify the deep-favorite YES cell on forward data (patience, no code)
 Two independent studies show YES at 90c+ earning ~+1–2c (market underprices

@@ -37,9 +37,11 @@
   blocks ~everything because there is no edge to pass. That is a feature.
 
 ## The three open research directions (everything else is concluded)
-1. **Sub-second maker/taker microstructure** — blocked on a (free) Kalshi API
-   key for read-only WS book deltas + trade prints. Resolves the maker-entry
-   and stale-quote questions that 1–4s REST snapshots cannot.
+1. **Sub-second maker/taker microstructure** — UNBLOCKED 2026-06-10: API creds
+   were already in `.env`; the read-only market-data WS works (~410 book
+   updates/s, 14ms median recv age) and both the hi-res WS recorder and public
+   trade-print collection are running. Re-run the maker-entry and reprice-lag
+   studies once a few hundred windows of this data exist.
 2. **Deep-favorite YES bias** (~+1–2c, consistent across two independent
    studies) — verify on forward data; no new infrastructure needed.
 3. **Cross-venue comparison** — needs the Polymarket account funded; revive
