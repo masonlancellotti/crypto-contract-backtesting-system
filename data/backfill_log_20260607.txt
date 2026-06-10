@@ -1,0 +1,6 @@
+=== kalshi-backfill-trades: series=KXBTC15M start=20260607 end=20260607 ===
+  existing trade_ids on disk: 949979
+  progress: through 2026-06-08 00:00 written=715174 fetched=4372915
+  chunks=24 fetched=4372915 series_matched=715174 written=715174 dupes_skipped=0 errors=0
+  days_touched=1
+  note: READ-ONLY public tape; idempotent (trade_id dedupe); no orders; live disabled.

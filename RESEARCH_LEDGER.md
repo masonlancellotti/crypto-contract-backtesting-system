@@ -41,11 +41,13 @@ system itself is healthy: it measures honestly and fails fast.
 | 10 | Stale-quote v2 on hi-res joins | `kalshi-reprice-lag-study --hires` | NEGATIVE: win 0%, no fee-surviving edge; +250/500ms response horizons ~0% covered because the Kalshi book is REST-polled at ~1.1s | UNBLOCKED 2026-06-10: WS book source live (~410 upd/s); re-run after hi-res WS data accumulates |
 | 11 | Residual-over-market models (predict y − p_market) | `kalshi-train-residual-models` | No model stably beats market OOS (walk-forward deltas flip sign; ICs flip sign); lightgbm's +2.14 single-split backtest has the WORST calibration (ECE 0.070) = luck | CONCLUDED-NEGATIVE |
 | 12 | Replace the overfit calibrator with a safer one | `kalshi-calibrator-replacement-review`, `kalshi-paper-calibrator-swap-review` | Fresh isotonic ≈ break-even (+0.73 over 179 test windows); market-implied best calibrated (0.0199) but is the price (no edge); swap gate declined all candidates; superseded by full re-promotion 2026-06-10 | RESOLVED |
-| 13 | Maker (passive) entries recover the spread+fee | `kalshi-maker-entry-study` (2026-06-10) | Spread is only ~1c median; conservative trade-through lower bound NEGATIVE (YES −3.6c, NO −2.1c per fill — adverse selection > savings); `win\|no-fill ≈ 100%` confirms selection; bound is provably pessimistic (fills undercounted, worst subset counted) | OPEN — trade prints + WS book both recording since 2026-06-10; re-run when a few hundred windows exist |
-| 14 | Both-sides quoting (one-shot, join-bid both legs) | same study | 71.2% double-fill rate, +0.96c locked per pair, ≈ −0.1c/quote net after naked single-fill legs at the lower bound | OPEN — same as 13; inputs now recording |
+| 13 | Maker (passive) entries recover the spread+fee | `kalshi-maker-entry-study --fill-model prints-through\|prints-front` | RESOLVED WITH REAL FILLS (3.2M backfilled prints, 552-581 windows): maker saves ~1.8c vs taker per fill (real), but STATIC side-picking is pure drift exposure — per-side EV flips sign daily with BTC direction (YES −3.7/−2.0c, NO +0.0/+1.4c through/front brackets in a down week). Favorite-band cells positive on both bounds (YES 80c+: +1.6/+2.5c; NO 40-90c band) but drift-confounded | PARTIAL — execution-cost question answered; side-selection needs a signal or more regimes |
+| 14 | Both-sides quoting (one-shot, join-bid both legs) | same study, real fills | DECISIVELY NEGATIVE: full P&L −3.15c per quote point, negative 10/10 days. 74.9% double fills lock +0.97c, but naked single-fill legs average ≈ −21c (the market ran through one side) — static quoting cannot survive; viable MM needs fast cancel/requote (WS) + inventory skew | CONCLUDED-NEGATIVE for static quoting |
 | 15 | Deep-favorite YES bias (market underprices YES overall by ~1.2c; YES at 90c+ shows maker +2.05c, taker +0.96c over 262 windows) | maker study by-price table; calibrator review (`market_implied YES_overpred −1.16c`) | Only consistently positive cell across studies; small, plausibly real (favorite-longshot-like), but one cell among many (multiple-comparisons risk) | OPEN — verify on forward data before sizing |
 | 16 | Kalshi market-data WebSocket feasibility | `kalshi-ws-feasibility` | VERIFIED 2026-06-10 with configured creds: connected+subscribed, ~410 book updates/s, median recv age 14ms, sub-second available; `KALSHI_HIRES_BOOK_SOURCE=auto` now active (WS preferred, REST fallback) | RESOLVED — WS in use |
 | 17 | Deribit vol/options as model features | `record-deribit`, `DERIBIT_*` flags | Joined point-in-time as optional features; no standalone edge shown; ablation delta-Brier ≈ −0.0001 | INFRA — optional, off by default |
+| 18 | Smaller-cap 15m series are less efficiently priced than BTC | `collect_all_series.ps1`; KXETH15M/KXSOL15M/KXDOGE15M/KXXRP15M | All four series live + parse identically (verified 2026-06-10); underlying spot/perp feeds wired per asset; collection starts 2026-06-10 — spread/calibration comparison vs BTC is the first analysis once windows accumulate | OPEN — collecting |
+| 19 | Historical trade tape closes the maker-fill question NOW (no waiting) | `kalshi-backfill-trades` | DONE: ~600-700k KXBTC15M prints/day (~17% of the whole Kalshi tape), 0 errors/dupes, idempotent. NOTE: the endpoint is GLOBAL (client-side series filter) → future multi-series backfills should make ONE global pass writing all five series at once | INFRA — tape on disk Jun 1-10 |
 
 ## What is NOT worth doing (without new inputs)
 - Re-training bigger/fancier models on the same ~1–4s REST data. Three model
@@ -61,7 +63,9 @@ system itself is healthy: it measures honestly and fails fast.
    then re-run their studies.
 2. ~~Public trade prints~~ **DONE 2026-06-10** — the collector records
    `kalshi_trades` rows (taker_side included) every ~5s.
-3. **Forward verification of leg 15** (deep-favorite YES) on data collected
-   after 2026-06-10 — zero new infrastructure needed, just patience.
+3. **Forward verification of leg 15** (deep-favorite YES) — STRENGTHENED by real
+   fills (YES 90c+: +2.53c/fill certain-bound, 191 windows; 80-90c also +1.6c) and
+   it is the only cell positive across BOTH up and down days; still verify on
+   post-June-10 data before sizing.
 4. **Cross-venue (Polymarket BTC) price comparison** — needs the parked account
    funded; the 5m pipeline is in git history if revived.

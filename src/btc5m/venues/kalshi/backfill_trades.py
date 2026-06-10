@@ -67,7 +67,7 @@ def backfill_trades(config, *, series: str = "KXBTC15M", start_date: str,
 
     counts = {"chunks": 0, "fetched": 0, "series_matched": 0, "written": 0,
               "duplicates_skipped": 0, "errors": 0, "pages_capped_chunks": 0}
-    by_day: dict[str, list[dict]] = {}
+    days_touched: set[str] = set()
     recv_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
     t = start
@@ -88,6 +88,7 @@ def backfill_trades(config, *, series: str = "KXBTC15M", start_date: str,
             counts["pages_capped_chunks"] += 1
             emit(f"  WARNING chunk {t:%Y-%m-%d %H:%M} hit the page cap "
                  f"({limit}x{max_pages_per_chunk}); shrink --chunk-hours to avoid gaps")
+        by_day: dict[str, list[dict]] = {}
         for tr in trades:
             tk = tr.get("ticker") or ""
             tid = tr.get("trade_id")
@@ -112,17 +113,21 @@ def backfill_trades(config, *, series: str = "KXBTC15M", start_date: str,
             day = _day_str(created_ms) if created_ms else _day_str(recv_ms)
             by_day.setdefault(day, []).append(row)
             counts["written"] += 1
+        # flush PER CHUNK so a killed run keeps everything fetched so far
+        # (idempotent: the trade_id dedupe absorbs any rerun overlap)
+        for day, rows in sorted(by_day.items()):
+            rows.sort(key=lambda r: r.get("created_time_ms") or 0)
+            path = out_dir / f"kalshi_trades-{day}.jsonl"
+            with path.open("a", encoding="utf-8") as fh:
+                for r in rows:
+                    fh.write(json.dumps({"stream": "kalshi_trades", "event": r}) + "\n")
+            days_touched.add(day)
+        if counts["chunks"] % 24 == 0:
+            emit(f"  progress: through {t_next:%Y-%m-%d %H:%M} "
+                 f"written={counts['written']} fetched={counts['fetched']}")
         t = t_next
 
-    for day, rows in sorted(by_day.items()):
-        rows.sort(key=lambda r: r.get("created_time_ms") or 0)
-        path = out_dir / f"kalshi_trades-{day}.jsonl"
-        with path.open("a", encoding="utf-8") as fh:
-            for r in rows:
-                fh.write(json.dumps({"stream": "kalshi_trades", "event": r}) + "\n")
-        emit(f"  {day}: +{len(rows)} prints -> {path.name}")
-
-    counts["days_touched"] = len(by_day)
+    counts["days_touched"] = len(days_touched)
     counts["live_submission_allowed"] = False
     return counts
 

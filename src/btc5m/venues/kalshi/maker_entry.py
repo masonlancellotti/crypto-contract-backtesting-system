@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import csv
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -389,6 +389,49 @@ def analyze_maker_entries(sim: dict) -> dict:
         "distinct_windows": len({p["ticker"] for p in pairs}),
     }
 
+    # FULL both-sides quoting P&L (drift-neutral by construction): per quote point
+    # where BOTH join quotes were eligible — double fill locks 1-(Ly+Ln)-fees;
+    # a single fill settles naked; no fill is 0. This is the number the
+    # double-fill rate alone overstates and the naked legs alone understate.
+    by_point: dict = defaultdict(dict)
+    for d in decisions:
+        if d["mode"] == "join" and not d["would_cross"]:
+            by_point[(d["ticker"], d["t0"])][d["side"]] = d
+    bs_pnl: list[float] = []
+    bs_by_day: dict = defaultdict(list)
+    outcomes = Counter()
+    for (tk, t0), sides in by_point.items():
+        if "YES" not in sides or "NO" not in sides:
+            continue
+        yes, no = sides["YES"], sides["NO"]
+        fy = _filled_within(yes, CLOSE_HORIZON)
+        fn = _filled_within(no, CLOSE_HORIZON)
+        fee_y = maker_fee.per_contract_fee(yes["limit"])
+        fee_n = maker_fee.per_contract_fee(no["limit"])
+        if fy and fn:
+            pnl = 1.0 - (yes["limit"] + no["limit"]) - fee_y - fee_n
+            outcomes["double"] += 1
+        elif fy:
+            pnl = yes["y_side"] - yes["limit"] - fee_y
+            outcomes["yes_only"] += 1
+        elif fn:
+            pnl = no["y_side"] - no["limit"] - fee_n
+            outcomes["no_only"] += 1
+        else:
+            pnl = 0.0
+            outcomes["none"] += 1
+        bs_pnl.append(pnl)
+        bs_by_day[yes["day"]].append(pnl)
+    double_fill["both_sides_quote_points"] = len(bs_pnl)
+    double_fill["both_sides_outcomes"] = dict(outcomes)
+    double_fill["both_sides_ev_cents_per_quote"] = (_mean(bs_pnl) * 100.0) if bs_pnl else None
+    double_fill["both_sides_total_net"] = sum(bs_pnl) if bs_pnl else 0.0
+    double_fill["both_sides_ev_by_day_cents"] = {
+        day: round(_mean(v) * 100.0, 3) for day, v in sorted(bs_by_day.items())}
+    double_fill["both_sides_positive_days"] = sum(
+        1 for v in bs_by_day.values() if _mean(v) and _mean(v) > 0)
+    double_fill["both_sides_days"] = len(bs_by_day)
+
     # verdict: conservative lower bound per side at the central cohort
     central = {s: by_cohort[f"{s}/join/{CLOSE_HORIZON}"] for s in ("YES", "NO")}
     sides_positive = [s for s, a in central.items()
@@ -481,7 +524,12 @@ def write_maker_entry_report(config, sim: dict, analysis: dict) -> dict:
         f"- quote points: {df['n_quote_points']}  double fills: {df['n_double_fills']} "
         f"({_pct(df['double_fill_rate'])}) across {df['distinct_windows']} windows",
         f"- mean pair cost: {_f(df['mean_pair_cost'], 4)}  mean locked net per pair: "
-        f"{_f(df['mean_locked_net'], 4)}  total locked net: {_f(df['total_locked_net'], 3)}", "",
+        f"{_f(df['mean_locked_net'], 4)}  total locked net: {_f(df['total_locked_net'], 3)}",
+        f"- **FULL both-sides P&L (drift-neutral): {_f(df.get('both_sides_ev_cents_per_quote'))}c "
+        f"per quote point** over {df.get('both_sides_quote_points')} points "
+        f"(outcomes: {df.get('both_sides_outcomes')}; total net {_f(df.get('both_sides_total_net'), 2)}); "
+        f"positive days {df.get('both_sides_positive_days')}/{df.get('both_sides_days')}: "
+        f"{df.get('both_sides_ev_by_day_cents')}", "",
         "## Verdict", "",
         f"- sides with POSITIVE conservative maker EV: {v['sides_with_positive_conservative_maker_ev']}",
         f"- sides where maker(lower bound) beats taker: {v['sides_where_maker_beats_taker']}",

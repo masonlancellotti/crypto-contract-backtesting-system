@@ -7,9 +7,13 @@
 ## Identity
 - **Goal:** consistently profitable trading of short-term BTC Up/Down binary
   prediction-market contracts.
-- **Active venue:** Kalshi BTC 15-minute Up/Down, series **KXBTC15M**.
-  Target: P(YES resolves 1 at window close); settlement = 60s-average
-  **CF Benchmarks BRTI** at close ≥ at open (GTE; ties → YES).
+- **Active venue:** Kalshi crypto 15-minute Up/Down. Primary series
+  **KXBTC15M**; expanded 2026-06-10 to **KXETH15M / KXSOL15M / KXDOGE15M /
+  KXXRP15M** (all verified live: same Target Price sub-title, GTE comparison,
+  per-asset CF Benchmarks RTI settlement). Target: P(YES resolves 1 at window
+  close); settlement = 60s-average reference index at close ≥ at open (ties → YES).
+  Non-BTC series record into `data/series/<SERIES>/` (set `DATA_DIR` accordingly
+  for downstream commands).
 - **Mode:** record-only / paper-first. **Live trading is disabled everywhere by
   default** and requires a separate, explicit, intentionally-unimplemented step.
 - **Polymarket BTC 5m (the original leg) was REMOVED on 2026-06-10** — the
@@ -82,7 +86,9 @@ tests/         ~600 offline tests; `pytest -q` must stay green
 
 ## Daily operation
 ```powershell
-.\scripts\collect_kalshi_continuous.ps1          # keep data growing (Ctrl-C safe)
+.\scripts\collect_all_series.ps1               # all 5 series, one window each
+.\scripts\hires_record_all.ps1                 # sub-second WS recorders (needs API creds)
+.\scripts\collect_kalshi_continuous.ps1        # single series (BTC default)
 python -m btc5m.cli kalshi-ops-status --series KXBTC15M     # one dashboard
 python -m btc5m.cli kalshi-data-readiness                   # gate counts
 python -m btc5m.cli kalshi-doctor                           # pass/warn/fail
