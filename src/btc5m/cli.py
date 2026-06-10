@@ -44,17 +44,10 @@ import time
 import urllib.error
 
 from .config import AppConfig, load_config
-from .data.chainlink import ChainlinkStreamsClient
-from .data.line_capture import capture_live_line, capture_official_line, write_line_record
-from .data.polymarket_client import PolymarketClient, select_live_or_imminent
 from .data.recorder import Recorder
 from .data.underlying import CoinbaseSpotClient, build_underlying_client
-from .execution.base import ExecutionContext
-from .execution.live_polymarket import LivePolymarketExecutionAdapter
-from .execution.paper import PaperExecutionAdapter
 from .execution.risk import RiskContext, RiskManager
 from .notifications import build_notifier
-from .notifications.eod_summary import EodStats, send_eod_summary
 from .schemas import (
     BookLevel,
     ContractMeta,
@@ -141,10 +134,8 @@ def cmd_status(cfg: AppConfig, args: argparse.Namespace) -> int:
     print("--- subsystems ---")
     print(f"notify_provider            : {cfg.notifications.provider}")
     print(f"pushover_configured        : {cfg.notifications.pushover_configured}")
-    print(f"polymarket_creds_complete  : {cfg.polymarket.complete} (not needed for paper/public)")
     print("--- venues / data feeds ---")
     print(f"  PRIMARY venue              : {cfg.primary_venue}  (Kalshi BTC 15m KXBTC15M)")
-    print(f"  polymarket_dormant         : {cfg.polymarket_dormant}  (legacy BTC 5m reference)")
     print("  kalshi   public REST market data : IMPLEMENTED (no auth needed)")
     print("  coinbase spot   (REST polling)   : IMPLEMENTED")
     print("  binance  USDT-M (REST polling)   : IMPLEMENTED")
@@ -152,7 +143,6 @@ def cmd_status(cfg: AppConfig, args: argparse.Namespace) -> int:
     der_status = "IMPLEMENTED (public REST)" if (de and de.enabled) else "OPTIONAL / DISABLED"
     print(f"  deribit  vol/options (optional)  : {der_status}")
     print("  websocket streams                : scaffold (REST polling used)")
-    print("  polymarket (dormant) discovery+CLOB: IMPLEMENTED (public REST; runs only if re-enabled)")
     ll = getattr(cfg, "low_latency", None)
     if ll is not None:
         ws = "on" if ll.use_websocket else "off(REST fallback)"
@@ -206,19 +196,7 @@ def cmd_smoke(cfg: AppConfig, args: argparse.Namespace) -> int:
         print(f"  - blocked: {r}")
     print("  (kill switch + unset limits SHOULD block by default — that is correct)")
 
-    paper = PaperExecutionAdapter(cfg)
-    ctx = ExecutionContext(levels=book.asks, risk_decision=RiskDecision.ok())
-    fill = paper.submit(order, ctx)
-    print("--- paper fill mechanics demo (risk approved for demo) ---")
-    print(
-        f"status={fill.status} filled={fill.filled_size} avg_price={fill.avg_price:.4f} "
-        f"fees={fill.fees:.4f} is_paper={fill.is_paper}"
-    )
-    print(f"paper bankroll now: {paper.bankroll:.2f}")
-    if fill.avg_price <= book.mid:
-        print("WARNING: fill at/below midpoint — unexpected for a taker BUY")
-    else:
-        print("OK  fill is above midpoint (no midpoint-fill assumption)")
+    print("  (the live Kalshi adapter additionally refuses every order: see check-live-disabled)")
     return 0
 
 
@@ -227,28 +205,19 @@ def cmd_check_live_disabled(cfg: AppConfig, args: argparse.Namespace) -> int:
 
     print("=== check-live-disabled ===")
     order = _dummy_order()
-    ctx = ExecutionContext(levels=_dummy_book().asks, risk_decision=RiskDecision.ok())
 
-    # Kalshi (PRIMARY venue).
     kalshi = LiveKalshiExecutionAdapter(cfg)
-    k_block = kalshi.preflight(order, ctx)
-    k_fill = kalshi.submit(order, ctx)
+    k_block = kalshi.preflight(order, None)
+    k_fill = kalshi.submit(order, None)
     k_ok = bool(k_block) and k_fill.get("status") == "rejected"
     print(f"KALSHI live adapter refused: {k_ok}. Blockers:")
     for b in k_block:
         print(f"  - {b}")
 
-    # Polymarket (DORMANT) — still refuses.
-    adapter = LivePolymarketExecutionAdapter(cfg)
-    blockers = adapter.preflight(order, ctx)
-    fill = adapter.submit(order, ctx)
-    p_ok = bool(blockers) and fill.status == "rejected"
-    print(f"POLYMARKET live adapter refused: {p_ok} (venue dormant).")
-
-    if k_ok and p_ok:
-        print("LIVE DISABLED — both venue adapters refused the order.")
+    if k_ok:
+        print("LIVE DISABLED — the Kalshi live adapter refused the order.")
         return 0
-    print("ERROR: a live adapter did NOT refuse with default config!")
+    print("ERROR: the live adapter did NOT refuse with default config!")
     return 1
 
 
@@ -312,158 +281,8 @@ def cmd_notification_health(cfg: AppConfig, args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_discover_markets(cfg: AppConfig, args: argparse.Namespace) -> int:
-    client = PolymarketClient(cfg)
-    print(f"=== discover-markets: asset={args.asset} duration={args.duration} (public Gamma) ===")
-    try:
-        markets = client.discover_markets(asset=args.asset, duration=args.duration)
-    except urllib.error.URLError as exc:
-        print(f"BLOCKER: network/endpoint error reaching Gamma API: {exc}")
-        return 1
-    except Exception as exc:  # noqa: BLE001 - surface precise blocker, never fake
-        print(f"BLOCKER: discovery failed: {type(exc).__name__}: {exc}")
-        return 1
-
-    if not markets:
-        print("No active markets matched the slug prefix in the current window.")
-        print("(These markets are short-lived; try again — none are open right now.)")
-        return 0
-
-    from .discovery import WindowPhase, classify_meta
-
-    now = now_ms()
-    live = sum(1 for m in markets if PolymarketClient.is_window_live(m, ref_ms=now))
-    upcoming = sum(1 for m in markets if classify_meta(m, now_ms=now) is WindowPhase.UPCOMING_PRE_WINDOW)
-    print(f"found {len(markets)} tradeable market(s); {live} currently-live, {upcoming} upcoming:")
-    shown = _take(markets, args.max_markets)
-    for m in shown:
-        secs = (m.expiry_ms - now) / 1000.0
-        phase = classify_meta(m, now_ms=now)
-        if phase is WindowPhase.CURRENTLY_IN_WINDOW:
-            win = f"LIVE (in window, ~{secs:.0f}s left)"
-        elif phase is WindowPhase.UPCOMING_PRE_WINDOW:
-            win = f"upcoming (opens in ~{(m.window_start_ms - now) / 60000:.0f}m)"
-        elif phase is WindowPhase.POST_WINDOW_NOT_RESOLVED:
-            win = "post-window (awaiting resolution)"
-        elif phase is WindowPhase.FAR_FUTURE:
-            win = f"far-future (opens {_iso(m.window_start_ms)})"
-        else:
-            win = phase.value
-        print(
-            f"  {m.slug}  [{win}]\n"
-            f"    title      : {m.title}\n"
-            f"    type/cmp   : {m.market_type.value} / {m.comparison.value} "
-            f"(line = {('window-start price' if m.market_type.value == 'up_down' else m.line)})\n"
-            f"    expiry     : {m.expiry_ms} ms  (~{secs:.0f}s left)\n"
-            f"    condition  : {m.condition_id}\n"
-            f"    YES/NO tok : {m.yes_outcome_label}={_short(m.yes_token_id)} "
-            f"{m.no_outcome_label}={_short(m.no_token_id)}\n"
-            f"    resolution : {m.resolution_source}\n"
-            f"    status     : {m.status}"
-        )
-    if len(markets) > len(shown):
-        print(f"  ... and {len(markets) - len(shown)} more (use --max-markets 0 to show all)")
-    return 0
 
 
-def cmd_record(cfg: AppConfig, args: argparse.Namespace) -> int:
-    client = PolymarketClient(cfg)
-    print(
-        f"=== record: asset={args.asset} duration={args.duration} "
-        f"seconds={args.seconds} interval={args.interval}s ==="
-    )
-    try:
-        markets = client.discover_markets(asset=args.asset, duration=args.duration)
-    except urllib.error.URLError as exc:
-        print(f"BLOCKER: network/endpoint error reaching Gamma API: {exc}")
-        return 1
-    except Exception as exc:  # noqa: BLE001
-        print(f"BLOCKER: discovery failed: {type(exc).__name__}: {exc}")
-        return 1
-
-    if not markets:
-        print("BLOCKER: no active markets found to record (none open right now).")
-        return 0
-
-    if args.live_only:
-        before = len(markets)
-        markets = select_live_or_imminent(markets, lead_seconds=args.lead_seconds)
-        print(f"live-only: {len(markets)}/{before} markets are live or starting within "
-              f"{args.lead_seconds}s")
-        if not markets:
-            print("no live/imminent windows right now — skipping book recording this cycle "
-                  "(underlying still records). This is expected when only upcoming windows exist.")
-            return 0
-
-    targets = _take(markets, args.max_markets)
-    print(f"recording {len(targets)} market(s) to {cfg.data_path()}")
-
-    raw_books = norm_events = errors = lines_captured = 0
-    with Recorder(cfg) as rec:
-        # 1) Snapshot metadata (raw market payloads) so labels/lines can be re-derived.
-        for m in targets:
-            rec.record_raw("polymarket_markets", m.raw or {})
-
-        # 1b) Capture a PROVISIONAL window-start line for any market whose window
-        #     is currently open (proxy from a BTC feed; never settlement-grade).
-        if not args.no_line_capture:
-            try:
-                line_client = build_underlying_client(args.line_source, cfg)
-            except ValueError as exc:
-                print(f"  warn: {exc}; skipping line capture")
-                line_client = None
-            now = now_ms()
-            for m in targets:
-                if line_client is None or not m.window_start_ms:
-                    continue
-                if m.window_start_ms <= now <= m.expiry_ms:
-                    rec_line = capture_live_line(m, line_client)
-                    write_line_record(rec, rec_line)
-                    lines_captured += 1
-                    print(
-                        f"  line: {m.slug} {rec_line.line_source_status.value} "
-                        f"price={rec_line.line_price} ({rec_line.line_source})"
-                    )
-
-        # 2) Poll order books for both outcomes until the time budget elapses.
-        deadline = time.monotonic() + max(0.0, float(args.seconds))
-        while time.monotonic() < deadline:
-            for m in targets:
-                for outcome, token in (
-                    (Outcome.YES, m.yes_token_id),
-                    (Outcome.NO, m.no_token_id),
-                ):
-                    if not token:
-                        continue
-                    try:
-                        raw = client.get_raw_book(token)
-                        rec.record_raw(
-                            "polymarket_book",
-                            {"slug": m.slug, "outcome": outcome.value, "token_id": token,
-                             "recv_ms": now_ms(), "payload": raw},
-                        )
-                        raw_books += 1
-                        book = client.get_book(m.contract_id, outcome, token)
-                        rec.record_normalized(
-                            "polymarket_book", _normalized_event(m, outcome, token, book)
-                        )
-                        norm_events += 1
-                    except Exception as exc:  # noqa: BLE001 - keep going, count errors
-                        errors += 1
-                        print(f"  warn: {m.slug} {outcome.value}: {type(exc).__name__}: {exc}")
-            time.sleep(max(0.0, float(args.interval)))
-
-    print("--- record summary ---")
-    print(f"raw book snapshots recorded : {raw_books}")
-    print(f"normalized book events      : {norm_events}")
-    print(f"provisional lines captured  : {lines_captured}")
-    print(f"errors                      : {errors}")
-    print(f"raw dir       : {cfg.data_path() / 'raw'}")
-    print(f"normalized dir: {cfg.data_path() / 'normalized'}")
-    if raw_books == 0:
-        print("BLOCKER: recorded 0 books — check connectivity / market availability.")
-        return 1
-    return 0
 
 
 def cmd_record_underlying(cfg: AppConfig, args: argparse.Namespace) -> int:
@@ -516,387 +335,32 @@ def cmd_record_underlying(cfg: AppConfig, args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_backfill_settlements(cfg: AppConfig, args: argparse.Namespace) -> int:
-    from .labels.settlement_backfill import backfill_settlements
-
-    print(
-        f"=== backfill-settlements: asset={args.asset} duration={args.duration} "
-        f"network={'off' if args.no_network else 'on'} ==="
-    )
-    try:
-        rows, summary = backfill_settlements(
-            cfg,
-            asset=args.asset,
-            duration=args.duration,
-            use_network=not args.no_network,
-            line_source=args.line_source,
-        )
-    except Exception as exc:  # noqa: BLE001 - surface precise blocker, never fake
-        print(f"BLOCKER: backfill failed: {type(exc).__name__}: {exc}")
-        return 1
-
-    print(f"markets loaded     : {summary['markets_loaded']}")
-    print(f"completed windows  : {summary['completed_windows']}")
-    print(f"label rows         : {summary['rows']}")
-    print(f"by status          : {summary['by_status']}")
-    print(f"written            : {summary['written']} -> {summary['labels_file']}")
-    for row in rows[:6]:  # sample of label rows
-        print(
-            f"  {row.slug}: label={row.label_yes_resolved} official={row.official_outcome} "
-            f"status={row.label_source_status} reason={row.reason_code} "
-            f"dist={row.settlement_distance}"
-        )
-    if summary["markets_loaded"] == 0:
-        print("note: no recorded markets found — run `record` first.")
-    return 0
 
 
-def cmd_build_features(cfg: AppConfig, args: argparse.Namespace) -> int:
-    """Replay recorded normalized data into point-in-time feature rows."""
-    from .features.feature_store import FeatureStore
-    from .features.replay import build_feature_rows_from_recorded
-
-    print(f"=== build-features: asset={args.asset} duration={args.duration} ===")
-    try:
-        rows = build_feature_rows_from_recorded(cfg, asset=args.asset, duration=args.duration)
-    except Exception as exc:  # noqa: BLE001
-        print(f"BLOCKER: feature build failed: {type(exc).__name__}: {exc}")
-        return 1
-    if not rows:
-        print("note: no recorded Polymarket book events found — run `record` first.")
-        return 0
-    written = FeatureStore(cfg).write_rows(rows, replace=True)  # idempotent full rebuild
-    print(f"feature rows built: {len(rows)} | written: {written}")
-    print(f"features dir: {cfg.data_path() / 'features'}")
-    sample = rows[-1]
-    keys = [
-        "slug", "as_of_ms", "seconds_to_expiry", "reference_price", "line_price",
-        "line_source_status", "distance_from_line", "yes_bid", "yes_ask",
-        "yes_spread", "mkt_implied_yes_from_ask", "spot_ret_30s", "spot_rv_60s",
-        "spot_cvd_60s", "feed_health_ok", "stale_yes_quote",
-    ]
-    print("sample row (latest):")
-    for k in keys:
-        if k in sample:
-            print(f"  {k}: {sample[k]}")
-    return 0
 
 
-def cmd_decide(cfg: AppConfig, args: argparse.Namespace) -> int:
-    """Run the decision loop: features -> baseline model -> gated candidates.
-
-    The baseline model is UNCALIBRATED by design, so by default every candidate
-    is downgraded to WATCH/MANUAL_REVIEW (safe). Pass --allow-uncalibrated to
-    demonstrate the PAPER_CANDIDATE path; live is never reachable here.
-    """
-    from collections import Counter
-
-    from .decision import Decision, DecisionConfig, candidate_message, evaluate_candidate
-    from .features.replay import build_feature_rows_from_recorded
-    from .models.baseline import BaselineInputs, BaselineModel
-
-    print(f"=== decide: asset={args.asset} duration={args.duration} ===")
-    try:
-        rows = build_feature_rows_from_recorded(cfg, asset=args.asset, duration=args.duration)
-    except Exception as exc:  # noqa: BLE001
-        print(f"BLOCKER: feature build failed: {type(exc).__name__}: {exc}")
-        return 1
-    if not rows:
-        print("note: no feature rows (run `record` first).")
-        return 0
-
-    model = BaselineModel(cfg)
-    dcfg = DecisionConfig(allow_uncalibrated=args.allow_uncalibrated)
-    notifier = build_notifier(cfg)
-    counts: Counter = Counter()
-    shown = 0
-    for row in rows:
-        # Rough per-sqrt-second vol proxy from recent realized vol (provisional).
-        sigma = args.sigma if args.sigma else row.get("spot_rv_60s") or row.get("spot_rv_30s")
-        out = model.predict_proba(
-            BaselineInputs(
-                reference_price=row.get("reference_price"),
-                line=row.get("line_price"),
-                seconds_to_expiry=row.get("seconds_to_expiry"),
-                sigma_per_sqrt_s=sigma,
-            )
-        )
-        cand = evaluate_candidate(
-            row, out.p_yes, calibrated=out.calibration_ts_ms is not None,
-            line_source_status=row.get("line_source_status", "UNKNOWN"),
-            label_source_status="UNKNOWN", cfg=dcfg,
-        )
-        counts[cand["decision"]] += 1
-        if cand["decision"] in (Decision.PAPER_CANDIDATE.value, Decision.MANUAL_REVIEW.value) and shown < 5:
-            shown += 1
-            print(f"  {candidate_message(cand)}")
-            if cand["decision"] == Decision.PAPER_CANDIDATE.value:
-                notifier.paper_candidate(candidate_message(cand))
-
-    print(f"decisions over {len(rows)} rows: {dict(counts)}")
-    print("(uncalibrated baseline -> WATCH/MANUAL_REVIEW by default; this is correct)")
-    return 0
 
 
-def cmd_backfill_official_chainlink(cfg: AppConfig, args: argparse.Namespace) -> int:
-    """Capture OFFICIAL Chainlink window-start lines for completed windows.
-
-    Credential-gated: if Chainlink Data Streams is not configured locally, this
-    reports the precise blocker and does nothing (never fakes OFFICIAL data).
-    """
-    from .data.polymarket_client import _slug_prefix
-    from .labels.settlement_backfill import load_recorded_markets
-
-    print(f"=== backfill-official-chainlink: asset={args.asset} duration={args.duration} ===")
-    cl = ChainlinkStreamsClient(cfg)
-    if not cl.is_configured:
-        print(f"BLOCKER: {cl.not_configured_reason()}.")
-        print("Set CHAINLINK_STREAMS_API_KEY / _SECRET / CHAINLINK_BTC_FEED_ID in .env")
-        print("(env-only; never pasted in chat). Lines remain PROVISIONAL_REFERENCE until then.")
-        return 0
-
-    prefix = _slug_prefix(args.asset, args.duration)
-    markets = load_recorded_markets(cfg.data_path() / "raw", slug_prefix=prefix)
-    if not markets:
-        print("note: no recorded markets found — run `record` first.")
-        return 0
-
-    client = PolymarketClient(cfg)
-    now = now_ms()
-    official = unknown = 0
-    with Recorder(cfg) as rec:
-        for slug, mkt in markets.items():
-            meta = client._parse_market(mkt, asset=args.asset)
-            if meta.expiry_ms <= 0 or meta.expiry_ms >= now:
-                continue
-            line_rec = capture_official_line(meta, cl)
-            write_line_record(rec, line_rec)
-            if line_rec.line_source_status.value == "OFFICIAL":
-                official += 1
-                print(f"  OFFICIAL {slug}: line={line_rec.line_price}")
-            else:
-                unknown += 1
-                print(f"  UNKNOWN  {slug}: {line_rec.detail}")
-    print(f"--- summary: official={official} unknown={unknown} ---")
-    print("Re-run `backfill-settlements` to use OFFICIAL lines where available.")
-    return 0
 
 
-def cmd_label_status(cfg: AppConfig, args: argparse.Namespace) -> int:
-    from .labels.settlement_backfill import load_label_rows
-
-    rows = load_label_rows(cfg.data_path() / "labels")
-    print("=== label-status ===")
-    print(f"label rows on disk: {len(rows)}")
-    if not rows:
-        print("none yet — run `backfill-settlements`.")
-        return 0
-    from collections import Counter
-
-    by_status = Counter(r.get("label_source_status") for r in rows)
-    by_reason = Counter(r.get("reason_code") for r in rows)
-    official = sum(1 for r in rows if r.get("official_outcome") is not None)
-    review = sum(1 for r in rows if r.get("label_source_status") == "MANUAL_REVIEW")
-    print(f"by source status : {dict(by_status)}")
-    print(f"by reason code   : {dict(by_reason)}")
-    print(f"with official    : {official}")
-    print(f"MANUAL_REVIEW    : {review}")
-    return 0
 
 
-def cmd_paper(cfg: AppConfig, args: argparse.Namespace) -> int:
-    print("paper mode entrypoint. For the full loop use `run-paper-pipeline`.")
-    print("Use `smoke` to exercise the paper adapter fill mechanics now.")
-    print(f"Paper starting bankroll: {cfg.paper_starting_bankroll}")
-    return 0
 
 
-def cmd_paper_backtest(cfg: AppConfig, args: argparse.Namespace) -> int:
-    """Gated minimum backtest. Blocked (with exact missing data) until ready.
-
-    Never reports paper numbers as real profit.
-    """
-    from .backtest.paper_backtest import run_paper_backtest
-
-    print(f"=== paper-backtest: asset={args.asset} duration={args.duration} ===")
-    result = run_paper_backtest(cfg, asset=args.asset, duration=args.duration)
-    if result.get("status") == "blocked":
-        print("BLOCKED — not enough usable, OFFICIALLY-labeled, non-leaky rows.")
-        print(f"  need usable_labeled_rows >= {result['needed_usable_labeled_rows']}")
-        print(f"  have usable_labeled_rows  = {result['have_usable_labeled_rows']}")
-        print(f"  missing fields            = {result['missing_fields']}")
-        print("  (no P&L computed; this is correct on sparse data).")
-        return 0
-    print("PAPER SIMULATION (NOT real profit):")
-    for k in ("n_trades", "net_pnl_paper", "avg_pnl_paper", "hit_rate", "fees_paid"):
-        if k in result:
-            print(f"  {k}: {result[k]}")
-    print(f"  note: {result.get('note')}")
-    return 0
 
 
-def cmd_data_readiness(cfg: AppConfig, args: argparse.Namespace) -> int:
-    from .paper.readiness import load_readiness
-
-    print(f"=== data-readiness: asset={args.asset} duration={args.duration} ===")
-    r = load_readiness(cfg, asset=args.asset, duration=args.duration)
-    print("--- labels (one per completed window; binary outcome is settlement-grade) ---")
-    print(f"total_markets_seen          : {r['total_markets_seen']}")
-    print(f"official_binary_labels      : {r['official_binary_labels']}")
-    print(f"official_numeric_lines      : {r['official_numeric_lines']}  (Chainlink; 0 until creds set)")
-    print(f"provisional_numeric_lines   : {r['provisional_numeric_lines']}  (Coinbase/Binance proxy)")
-    print(f"provisional_final_prices    : {r['provisional_final_prices']}")
-    print(f"manual_review_rows          : {r['manual_review_rows']}")
-    print("--- feature rows ---")
-    print(f"feature_rows_total          : {r['feature_rows_total']}")
-    print(f"  with_line / without_line  : {r['feature_rows_with_line']} / {r['feature_rows_without_line']}")
-    print(f"  with_polymarket_book      : {r['feature_rows_with_polymarket_book']}")
-    print(f"  with_underlying           : {r['feature_rows_with_underlying']}")
-    print("--- model-specific usable rows ---")
-    print(f"baseline_line_model         : {r['usable_rows_for_baseline_line_model']} (labeled: {r['usable_labeled_rows']})")
-    print(f"non_line (binary) model     : {r['usable_rows_for_non_line_model']} (labeled: {r['usable_labeled_rows_non_line']})")
-    print(f"microstructure model        : {r['usable_rows_for_microstructure_model']}")
-    print(f"missing fields (line model) : {r['missing_fields']}")
-    print("--- gates ---")
-    print(f"training_allowed_line_model : {r['training_allowed_line_model']} (need >= {r['min_train_rows']})")
-    print(f"training_allowed_binary_only: {r['training_allowed_binary_only']} (need >= {r['min_train_rows']})")
-    print(f"backtest_allowed            : {r['backtest_allowed']} (need >= {r['min_backtest_rows']})")
-    for b in r["reasons_training_blocked"]:
-        print(f"  training blocked: {b}")
-    for b in r["reasons_backtest_blocked"]:
-        print(f"  backtest blocked: {b}")
-    print(f"note                        : {r['note']}")
-    return 0
 
 
 def _safety_snapshot(cfg: AppConfig) -> dict:
-    from .data.chainlink import ChainlinkStreamsClient
-
     return {
         "trading_mode": cfg.trading_mode,
         "live_trading_enabled": cfg.live_trading_enabled,
         "kill_switch_enabled": cfg.kill_switch_enabled,
         "live_permitted": cfg.live_permitted,
         "notifier": type(build_notifier(cfg)).__name__,
-        "chainlink_configured": ChainlinkStreamsClient(cfg).is_configured,
     }
 
 
-def cmd_run_paper_pipeline(cfg: AppConfig, args: argparse.Namespace) -> int:
-    """Orchestrate the full record-only/paper pipeline; each step fails safe.
-
-    discovery -> record books (+line) -> record underlying -> backfill settlements
-    -> build features -> decide + paper ledger -> session summary. Live is never
-    enabled; every step that is blocked is reported and the pipeline continues.
-    """
-    from .features.feature_store import FeatureStore
-    from .features.replay import build_feature_rows_from_recorded
-    from .paper.ledger import PaperLedger
-    from .paper.pipeline import run_paper_decisions
-    from .paper.readiness import load_readiness
-    from .paper.session import write_session_summary
-
-    print(f"=== run-paper-pipeline: asset={args.asset} duration={args.duration} "
-          f"seconds={args.seconds} sources={args.sources} network={'off' if args.no_network else 'on'} ===")
-    blockers: list[str] = []
-    # Budget: 60% to book recording, 40% to underlying recording.
-    book_secs = max(0.0, float(args.seconds) * 0.6)
-    und_secs = max(0.0, float(args.seconds) * 0.4)
-
-    # 1) discovery + 2) record books (+line) + 3) record underlying (network).
-    if not args.no_network:
-        for label, fn, extra in (
-            ("discover", cmd_discover_markets, {}),
-            ("record-books", cmd_record, {"seconds": book_secs}),
-            ("record-underlying", cmd_record_underlying, {"seconds": und_secs}),
-        ):
-            try:
-                sub = argparse.Namespace(**{**vars(args), **extra})
-                rc = fn(cfg, sub)
-                if rc != 0:
-                    blockers.append(f"{label}: non-zero exit ({rc})")
-            except Exception as exc:  # noqa: BLE001 - keep going
-                blockers.append(f"{label}: {type(exc).__name__}: {exc}")
-    else:
-        blockers.append("network steps skipped (--no-network): using existing recorded data")
-
-    # 4) backfill settlements (network for official outcomes).
-    try:
-        rc = cmd_backfill_settlements(cfg, args)
-        if rc != 0:
-            blockers.append(f"backfill-settlements: non-zero exit ({rc})")
-    except Exception as exc:  # noqa: BLE001
-        blockers.append(f"backfill-settlements: {type(exc).__name__}: {exc}")
-
-    # 5) build features.
-    feature_rows = []
-    try:
-        feature_rows = build_feature_rows_from_recorded(cfg, asset=args.asset, duration=args.duration)
-        FeatureStore(cfg).write_rows(feature_rows, replace=True)  # idempotent full rebuild
-    except Exception as exc:  # noqa: BLE001
-        blockers.append(f"build-features: {type(exc).__name__}: {exc}")
-
-    # 6) decisions + paper ledger.
-    entries, dstats = [], {}
-    try:
-        entries, dstats = run_paper_decisions(
-            cfg, asset=args.asset, duration=args.duration,
-            allow_uncalibrated=args.allow_uncalibrated, sigma_override=args.sigma,
-            requested_size=args.size,
-        )
-    except Exception as exc:  # noqa: BLE001
-        blockers.append(f"decide: {type(exc).__name__}: {exc}")
-    ledger = PaperLedger(cfg)
-    written = ledger.write(entries) if entries else 0
-
-    # Send Pushover/Noop for any PAPER_CANDIDATE.
-    notifier = build_notifier(cfg)
-    from .decision.decision_layer import Decision
-    for e in entries:
-        if e.decision == Decision.PAPER_CANDIDATE.value:
-            notifier.paper_candidate(
-                f"{e.side} @ {e.executable_price} | model {e.model_yes_probability} | "
-                f"net {('%+.1fc' % (e.net_edge*100)) if e.net_edge is not None else 'n/a'} | {e.slug}"
-            )
-
-    # 7) readiness + session summary.
-    readiness = load_readiness(cfg, asset=args.asset, duration=args.duration)
-    data = {
-        "markets_seen": dstats.get("markets_seen", 0),
-        "book_snapshots": dstats.get("feature_rows", 0),
-        "underlying_events": _count_norm(cfg, "underlying_coinbase-*.jsonl")
-        + _count_norm(cfg, "underlying_binance_futures-*.jsonl"),
-        "line_records": _count_norm(cfg, "settlement_lines-*.jsonl"),
-        "label_rows": readiness["completed_windows"],
-        "feature_rows": len(feature_rows),
-    }
-    next3 = [
-        "Run longer/again to accumulate full windows + underlying density.",
-        "Provide Chainlink creds and run backfill-official-chainlink for OFFICIAL lines.",
-        "When data-readiness allows, train+calibrate and run the gated backtest.",
-    ]
-    session = {
-        "data": data, "decisions_by_state": dstats.get("decisions_by_state", {}),
-        "paper_candidates": dstats.get("paper_candidates", 0), "fills": dstats.get("fills", 0),
-        "rejections": dstats.get("rejections", 0), "ledger_entries": written,
-        "ledger_file": str(ledger._day_file()), "readiness": readiness,
-        "safety": _safety_snapshot(cfg), "blockers": blockers, "next_actions": next3,
-    }
-    summary_path = write_session_summary(cfg, session)
-
-    print("--- pipeline summary ---")
-    print(f"decisions: {dstats.get('decisions_by_state', {})}")
-    print(f"paper candidates: {dstats.get('paper_candidates', 0)} | fills: {dstats.get('fills', 0)} "
-          f"| ledger entries: {written}")
-    print(f"ledger : {ledger._day_file()}")
-    print(f"summary: {summary_path}")
-    print(f"training_allowed={readiness['training_allowed']} backtest_allowed={readiness['backtest_allowed']}")
-    if blockers:
-        print("blockers:")
-        for b in blockers:
-            print(f"  - {b}")
-    print("safety: live disabled, paper-only; no real orders placed.")
-    return 0
 
 
 def _count_norm(cfg: AppConfig, glob: str) -> int:
@@ -911,17 +375,6 @@ def _count_norm(cfg: AppConfig, glob: str) -> int:
     return n
 
 
-def cmd_eod(cfg: AppConfig, args: argparse.Namespace) -> int:
-    stats = EodStats(
-        signals=42,
-        paper_fills=9,
-        net_paper_pnl=12.40,
-        hit_rate=0.56,
-        main_reject_reason="stale quotes",
-    )
-    ok = send_eod_summary(cfg, stats)
-    print(f"EOD summary sent={ok}")
-    return 0 if ok else 1
 
 
 # --------------------------------------------------------------------------- #
@@ -950,206 +403,8 @@ def _resolve_slug(args: argparse.Namespace) -> str | None:
     return None
 
 
-def cmd_debug_discovery(cfg: AppConfig, args: argparse.Namespace) -> int:
-    """Explain exactly what discovery sees: routes, classification, mismatches.
-
-    Read-only. Compares the reliable slug-grid route against the legacy
-    newest-created query and flags DISCOVERY_MISMATCH_WITH_UI when warranted.
-    """
-    from collections import Counter
-
-    from .discovery import (
-        align_window_start_s,
-        classify_window,
-        duration_to_seconds,
-        enumerate_slugs,
-        make_slug,
-        slug_prefix,
-    )
-
-    client = PolymarketClient(cfg)
-    now = now_ms()
-    try:
-        step = duration_to_seconds(args.duration)
-    except ValueError as exc:
-        print(f"BLOCKER: {exc}")
-        return 1
-    prefix = slug_prefix(args.asset, args.duration)
-
-    print(f"=== debug-discovery: asset={args.asset} duration={args.duration} ===")
-    print(f"local UTC now      : {_iso(now)}  ({now} ms)")
-    print(f"gamma server Date  : {client.server_date_header() or 'unavailable'}")
-    print(f"slug interpretation: '<unix_ts>' = window START in epoch SECONDS, "
-          f"aligned to {step}s; expiry = start + {step}s (verified live)")
-    cur_start = align_window_start_s(now, step)
-    cur_slug = make_slug(args.asset, args.duration, cur_start)
-    print(f"expected current   : {cur_slug}  (window {_iso(cur_start * 1000)})")
-
-    lookback_s = int(args.lookback_minutes) * 60
-    lookahead_s = int(float(args.lookahead_hours) * 3600)
-    slugs = enumerate_slugs(args.asset, args.duration, now,
-                            lookback_s=lookback_s, lookahead_s=lookahead_s)
-    try:
-        raw_slug = client.get_markets_by_slugs(slugs, include_closed=True)
-    except urllib.error.URLError as exc:
-        print(f"BLOCKER: network/endpoint error reaching Gamma API: {exc}")
-        return 1
-    legacy = client._discover_far_future_via_queries(asset=args.asset, duration=args.duration)
-
-    print("\n--- query routes attempted ---")
-    print(f"  [slug-grid]   enumerated {len(slugs)} slugs over "
-          f"[now-{args.lookback_minutes}m, now+{args.lookahead_hours}h] -> "
-          f"{len(raw_slug)} markets returned")
-    print(f"  [legacy desc] order=startDate desc (the OLD primary path) -> "
-          f"{len(legacy)} btc5m markets")
-
-    by_slug = {m.get("slug"): m for m in raw_slug if (m.get("slug") or "").startswith(prefix)}
-    metas = [client._parse_market(m, asset=args.asset) for m in by_slug.values()]
-    metas = [m for m in metas if m]
-    metas.sort(key=lambda c: c.window_start_ms or 0)
-
-    counts: Counter = Counter()
-    accepting = 0
-    starts: list[int] = []
-    by_phase: dict[str, list] = {}
-    for m in metas:
-        st = (m.status or "").lower()
-        ph = classify_window(
-            now_ms=now, window_start_ms=m.window_start_ms, expiry_ms=m.expiry_ms,
-            closed=st in ("closed", "resolved"), resolved=st == "resolved",
-        )
-        counts[ph.value] += 1
-        by_phase.setdefault(ph.value, []).append(m)
-        if bool((m.raw or {}).get("acceptingOrders")):
-            accepting += 1
-        if m.window_start_ms:
-            starts.append(m.window_start_ms)
-
-    print("\n--- classification (slug-grid, unique slugs) ---")
-    print(f"  unique slug matches      : {len(metas)}")
-    print(f"  oldest window start      : {_iso(min(starts)) if starts else 'n/a'}")
-    print(f"  newest window start      : {_iso(max(starts)) if starts else 'n/a'}")
-    print(f"  ACCEPTING_ORDERS (flag)  : {accepting}  (orthogonal to window phase)")
-    for phase in (
-        "CURRENTLY_IN_WINDOW", "UPCOMING_PRE_WINDOW", "POST_WINDOW_NOT_RESOLVED",
-        "FAR_FUTURE", "RESOLVED_OR_CLOSED", "STALE_PAST", "UNKNOWN_TIMING",
-    ):
-        print(f"  {phase:24s} : {counts.get(phase, 0)}")
-
-    current = by_phase.get("CURRENTLY_IN_WINDOW", [])
-    print("\n--- current-window candidate(s) ---")
-    if current:
-        for m in current:
-            secs = (m.expiry_ms - now) / 1000.0
-            print(f"  {m.slug}  ({_iso(m.window_start_ms)} -> {_iso(m.expiry_ms)}, ~{secs:.0f}s left)")
-            print(f"    UI: https://polymarket.com/event/{m.slug}")
-            print(f"    YES/NO tok: {_short(m.yes_token_id)} / {_short(m.no_token_id)}  "
-                  f"accepting={bool((m.raw or {}).get('acceptingOrders'))}")
-    else:
-        print("  (none in-window this instant — windows roll every 5m)")
-
-    print("\n--- include/exclude reasons (sample) ---")
-    for m in metas[:10]:
-        st = (m.status or "").lower()
-        ph = classify_window(
-            now_ms=now, window_start_ms=m.window_start_ms, expiry_ms=m.expiry_ms,
-            closed=st in ("closed", "resolved"), resolved=st == "resolved",
-        )
-        included = st not in ("closed", "resolved")
-        print(f"  {m.slug}: phase={ph.value} accepting={bool((m.raw or {}).get('acceptingOrders'))} "
-              f"status={m.status} -> discover_markets {'INCLUDES' if included else 'EXCLUDES'}")
-    print("\n--- exact filters used by discover_markets ---")
-    print("  keep slug-grid markets whose status is not closed/resolved; sort by expiry.")
-    print(f"  (upcoming horizon = 60m; lookahead default = 120m)")
-
-    # Mismatch detection.
-    print("\n--- mismatch check ---")
-    legacy_live = sum(1 for m in legacy if PolymarketClient.is_window_live(m, ref_ms=now))
-    live_or_accepting = counts.get("CURRENTLY_IN_WINDOW", 0) + counts.get("UPCOMING_PRE_WINDOW", 0)
-    if live_or_accepting and legacy_live == 0:
-        print("  NOTE: the legacy order=startDate query finds 0 live windows but the slug "
-              "grid finds current/upcoming windows. The legacy path WOULD MISS the UI's "
-              "rolling markets; the slug grid (now primary) fixes this.")
-    if live_or_accepting == 0 and accepting == 0:
-        print("  DISCOVERY_MISMATCH_WITH_UI: no current/upcoming/accepting BTC 5m markets "
-              "found via the slug grid. If the Polymarket UI shows a live BTC 5m market, "
-              "use the manual override:")
-        print(f'    python -m btc5m.cli inspect-market --slug "{cur_slug}"')
-        print('    python -m btc5m.cli inspect-market --url "<paste current Polymarket BTC 5m URL>"')
-    else:
-        print("  OK: slug-grid discovery sees current/upcoming windows (matches a rolling UI).")
-
-    if args.show_raw and metas:
-        import json as _json
-        print("\n--- raw sample (first market) ---")
-        print(_json.dumps(metas[0].raw, indent=2)[:2000])
-    return 0
 
 
-def cmd_inspect_market(cfg: AppConfig, args: argparse.Namespace) -> int:
-    """Inspect a single market by --slug or --url (metadata + both books). Read-only."""
-    from .discovery import classify_window
-
-    slug = _resolve_slug(args)
-    if not slug:
-        print("BLOCKER: provide --slug or --url (could not parse a slug).")
-        return 1
-    print(f"=== inspect-market: slug={slug} ===")
-    client = PolymarketClient(cfg)
-    try:
-        raw = client.get_market_raw_by_slug(slug, include_closed=True)
-    except urllib.error.URLError as exc:
-        print(f"BLOCKER: network/endpoint error reaching Gamma API: {exc}")
-        return 1
-    if not raw:
-        print(f"BLOCKER: market not found by slug '{slug}'. Check the slug/URL "
-              "(expected form btc-updown-5m-<unix_ts>).")
-        return 1
-    meta = client._parse_market(raw, asset=args.asset)
-    now = now_ms()
-    st = (meta.status or "").lower()
-    phase = classify_window(
-        now_ms=now, window_start_ms=meta.window_start_ms, expiry_ms=meta.expiry_ms,
-        closed=st in ("closed", "resolved"), resolved=st == "resolved",
-    )
-    desc = (raw.get("description") or "").replace("\n", " ")
-    print(f"  title        : {meta.title}")
-    print(f"  market id    : {meta.market_id}")
-    print(f"  condition id : {meta.condition_id}")
-    print(f"  outcomes     : {meta.yes_outcome_label} / {meta.no_outcome_label}")
-    print(f"  YES token    : {meta.yes_token_id}")
-    print(f"  NO  token    : {meta.no_token_id}")
-    print(f"  eventStart   : {raw.get('eventStartTime')}  ({_iso(meta.window_start_ms)})")
-    print(f"  endDate      : {raw.get('endDate')}  ({_iso(meta.expiry_ms)})")
-    print(f"  status flags : active={raw.get('active')} closed={raw.get('closed')} "
-          f"archived={raw.get('archived')} acceptingOrders={raw.get('acceptingOrders')}")
-    print(f"  window phase : {phase.value}")
-    print(f"  type/cmp     : {meta.market_type.value} / {meta.comparison.value} "
-          f"(line = window-start reference price; settlement from description, not title)")
-    print(f"  resolution   : {meta.resolution_source}")
-    print(f"  settlement   : {desc[:240]}")
-
-    if not (meta.yes_token_id and meta.no_token_id):
-        print("BLOCKER: token ids missing from market metadata — cannot fetch books.")
-        return 1
-
-    print("  --- order books (read-only; NO orders placed) ---")
-    ok = True
-    for label, outcome, token in (
-        (meta.yes_outcome_label or "YES", Outcome.YES, meta.yes_token_id),
-        (meta.no_outcome_label or "NO", Outcome.NO, meta.no_token_id),
-    ):
-        try:
-            book = client.get_book(meta.contract_id, outcome, token)
-            bb = book.best_bid.price if book.best_bid else None
-            ba = book.best_ask.price if book.best_ask else None
-            print(f"    {label:5s}: bid={bb} ask={ba} spread={book.spread} "
-                  f"crossed={book.is_crossed} levels={len(book.bids)}x{len(book.asks)} "
-                  f"quote_age_ms={age_ms(book.ts_ms, ref_ms=book.recv_ms)}")
-        except Exception as exc:  # noqa: BLE001 - precise blocker, never crash
-            ok = False
-            print(f"    {label:5s}: BLOCKER fetching book: {type(exc).__name__}: {exc}")
-    return 0 if ok else 1
 
 
 def _poll_books_once(client, rec, markets, *, errors_label: bool = True) -> tuple[int, int, int]:
@@ -1177,218 +432,8 @@ def _poll_books_once(client, rec, markets, *, errors_label: bool = True) -> tupl
     return raw_books, norm_events, errors
 
 
-def cmd_record_market(cfg: AppConfig, args: argparse.Namespace) -> int:
-    """Record one explicit market (--slug/--url): raw payload, books, line. No orders."""
-    slug = _resolve_slug(args)
-    if not slug:
-        print("BLOCKER: provide --slug or --url (could not parse a slug).")
-        return 1
-    print(f"=== record-market: slug={slug} seconds={args.seconds} interval={args.interval}s ===")
-    client = PolymarketClient(cfg)
-    try:
-        raw = client.get_market_raw_by_slug(slug, include_closed=True)
-    except urllib.error.URLError as exc:
-        print(f"BLOCKER: network/endpoint error reaching Gamma API: {exc}")
-        return 1
-    if not raw:
-        print(f"BLOCKER: market not found by slug '{slug}'.")
-        return 1
-    meta = client._parse_market(raw, asset=args.asset)
-    if not (meta.yes_token_id and meta.no_token_id):
-        print("BLOCKER: token ids missing — cannot record books.")
-        return 1
-
-    raw_books = norm_events = errors = lines = 0
-    with Recorder(cfg) as rec:
-        rec.record_raw("polymarket_markets", meta.raw or {})
-        # Provisional line if the window is currently open.
-        now = now_ms()
-        if not args.no_line_capture and meta.window_start_ms and meta.window_start_ms <= now <= meta.expiry_ms:
-            try:
-                line_client = build_underlying_client(args.line_source, cfg)
-                rec_line = capture_live_line(meta, line_client)
-                write_line_record(rec, rec_line)
-                lines += 1
-                print(f"  line: {meta.slug} {rec_line.line_source_status.value} "
-                      f"price={rec_line.line_price} ({rec_line.line_source})")
-            except ValueError as exc:
-                print(f"  warn: {exc}; skipping line capture")
-        deadline = time.monotonic() + max(0.0, float(args.seconds))
-        first = True
-        while first or time.monotonic() < deadline:
-            first = False
-            rb, ne, er = _poll_books_once(client, rec, [meta])
-            raw_books += rb
-            norm_events += ne
-            errors += er
-            if time.monotonic() < deadline:
-                time.sleep(max(0.0, float(args.interval)))
-
-    print("--- record-market summary ---")
-    print(f"raw book snapshots : {raw_books}")
-    print(f"normalized events  : {norm_events}")
-    print(f"provisional lines  : {lines}")
-    print(f"errors             : {errors}")
-    if raw_books == 0:
-        print("BLOCKER: recorded 0 books — check connectivity / token mapping.")
-        return 1
-    return 0
 
 
-def cmd_collect_continuous(cfg: AppConfig, args: argparse.Namespace) -> int:
-    """Continuous rolling collector: rediscover, retire, record books + underlying,
-    periodically backfill/label/build-features/readiness. Record-only; no orders.
-
-    Runs until interrupted (Ctrl-C) by default; bound it with --seconds N or
-    --max-cycles N. Rediscovery every --rediscover-seconds keeps the target set
-    fresh as 5-minute windows roll; it never stares at one stale market list.
-    """
-    import dataclasses
-
-    from .discovery import COLLECTIBLE_PHASES, classify_meta
-    from .features.feature_store import FeatureStore
-    from .features.replay import build_feature_rows_from_recorded
-    from .labels.settlement_backfill import backfill_settlements
-    from .paper.readiness import load_readiness
-
-    print(f"=== collect-continuous: asset={args.asset} duration={args.duration} "
-          f"rediscover={args.rediscover_seconds}s process={args.process_seconds}s "
-          f"sources={args.sources} max_markets={args.max_markets} ===")
-    print("safety: record-only; live trading disabled; no orders are ever placed.")
-
-    sources = [s for s in (args.sources or "coinbase,binance").split(",") if s.strip()]
-    und_clients = []
-    for name in sources:
-        try:
-            und_clients.append(build_underlying_client(name, cfg))
-        except ValueError as exc:
-            print(f"  warn: {exc}")
-    try:
-        line_client = build_underlying_client(args.line_source, cfg)
-    except ValueError:
-        line_client = None
-
-    client = PolymarketClient(cfg)
-    deadline = (time.monotonic() + float(args.seconds)) if args.seconds and args.seconds > 0 else None
-    max_cycles = int(args.max_cycles) if getattr(args, "max_cycles", 0) else 0
-
-    targets: dict[str, ContractMeta] = {}
-    seen_market_versions: dict[str, str] = {}  # slug -> updatedAt (dedupe raw market writes)
-    lines_captured: set[str] = set()
-    tot_books = tot_norm = tot_und = tot_lines = tot_err = 0
-    cycle = 0
-    last_rediscover = 0.0
-    last_process = time.monotonic()
-
-    try:
-        with Recorder(cfg) as rec:
-            while True:
-                cycle += 1
-                now = now_ms()
-                mono = time.monotonic()
-
-                # 1) Rediscover (rolling) — add new, retire closed/expired.
-                if mono - last_rediscover >= float(args.rediscover_seconds) or cycle == 1:
-                    last_rediscover = mono
-                    try:
-                        discovered = client.discover_markets(asset=args.asset, duration=args.duration)
-                    except Exception as exc:  # noqa: BLE001
-                        discovered = []
-                        print(f"  warn: rediscover failed: {type(exc).__name__}: {exc}")
-                    for m in discovered:
-                        if not m.slug:
-                            continue
-                        targets[m.slug] = m
-                        ver = str((m.raw or {}).get("updatedAt") or "")
-                        if seen_market_versions.get(m.slug) != ver:
-                            rec.record_raw("polymarket_markets", m.raw or {})
-                            seen_market_versions[m.slug] = ver
-                    # Retire markets whose window is long past / resolved.
-                    for slug in list(targets):
-                        ph = classify_meta(targets[slug], now_ms=now)
-                        if ph.value in ("RESOLVED_OR_CLOSED", "STALE_PAST"):
-                            targets.pop(slug, None)
-
-                # 2) Collectible set: live + upcoming + just-post-window.
-                collectible = [
-                    m for m in targets.values()
-                    if classify_meta(m, now_ms=now) in COLLECTIBLE_PHASES
-                ]
-                collectible.sort(key=lambda c: c.expiry_ms or 0)
-                collectible = _take(collectible, args.max_markets)
-
-                # 3) Capture provisional lines for newly in-window markets.
-                if line_client is not None:
-                    for m in collectible:
-                        if (m.slug not in lines_captured and m.window_start_ms
-                                and m.window_start_ms <= now <= m.expiry_ms):
-                            try:
-                                rec_line = capture_live_line(m, line_client)
-                                write_line_record(rec, rec_line)
-                                lines_captured.add(m.slug)
-                                tot_lines += 1
-                            except Exception:  # noqa: BLE001
-                                pass
-
-                # 4) Poll books for collectible markets.
-                rb, ne, er = _poll_books_once(client, rec, collectible, errors_label=False)
-                tot_books += rb
-                tot_norm += ne
-                tot_err += er
-
-                # 5) Poll underlying.
-                for uc in und_clients:
-                    stream = f"underlying_{uc.source}"
-                    try:
-                        for raw_ev, event in uc.poll():
-                            rec.record_raw(stream, raw_ev)
-                            rec.record_normalized(stream, dataclasses.asdict(event))
-                            tot_und += 1
-                    except Exception:  # noqa: BLE001
-                        tot_err += 1
-
-                # 6) Periodic processing: backfill + features + readiness.
-                if mono - last_process >= float(args.process_seconds):
-                    last_process = mono
-                    rec.flush()  # ensure on-disk data is current before re-reading
-                    try:
-                        _, bsum = backfill_settlements(cfg, asset=args.asset, duration=args.duration)
-                    except Exception:  # noqa: BLE001
-                        bsum = {"completed_windows": "?"}
-                    try:
-                        rows = build_feature_rows_from_recorded(cfg, asset=args.asset, duration=args.duration)
-                        FeatureStore(cfg).write_rows(rows, replace=True)
-                        nrows = len(rows)
-                    except Exception:  # noqa: BLE001
-                        nrows = "?"
-                    try:
-                        r = load_readiness(cfg, asset=args.asset, duration=args.duration)
-                        ready = (f"official_labels={r['official_labels']} "
-                                 f"usable_line={r.get('usable_rows_for_baseline_line_model', '?')} "
-                                 f"train={r['training_allowed']}")
-                    except Exception:  # noqa: BLE001
-                        ready = "n/a"
-                    print(f"  [process] completed_windows={bsum.get('completed_windows')} "
-                          f"feature_rows={nrows} {ready}")
-
-                live_n = sum(1 for m in collectible if m.window_start_ms and m.window_start_ms <= now <= m.expiry_ms)
-                print(f"[{_iso(now)}] cycle={cycle} known={len(targets)} collectible={len(collectible)} "
-                      f"live={live_n} books={tot_books} norm={tot_norm} underlying={tot_und} "
-                      f"lines={tot_lines} errors={tot_err}")
-
-                if max_cycles and cycle >= max_cycles:
-                    break
-                if deadline is not None and time.monotonic() >= deadline:
-                    break
-                time.sleep(max(0.0, float(args.interval)))
-    except KeyboardInterrupt:
-        print("\ninterrupted — flushing and exiting cleanly.")
-
-    print("--- collect-continuous summary ---")
-    print(f"cycles={cycle} markets_known={len(targets)} book_snapshots={tot_books} "
-          f"underlying_events={tot_und} lines_captured={tot_lines} errors={tot_err}")
-    print("safety: no orders placed; live trading disabled by default.")
-    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -3451,6 +2496,42 @@ def cmd_kalshi_shadow_compare_residual_models(cfg: AppConfig, args: argparse.Nam
     return 0
 
 
+def cmd_kalshi_maker_entry_study(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """READ-ONLY maker-entry feasibility study (conservative trade-through fills)."""
+    from .venues.kalshi.maker_entry import run_maker_entry_study
+
+    horizons_arg = getattr(args, "rest_horizons", None)
+    horizons = None
+    if horizons_arg:
+        horizons = [h if h == "close" else float(h) for h in str(horizons_arg).split(",") if h]
+    r = run_maker_entry_study(cfg, series=args.series,
+                              improve_cents=int(getattr(args, "improve_cents", 1) or 1),
+                              maker_fee_rate=float(getattr(args, "maker_fee_rate", 0.0) or 0.0),
+                              rest_horizons=horizons)
+    if getattr(args, "json", False):
+        print(json.dumps(r, indent=2, default=str)); return 0
+    print(f"=== kalshi-maker-entry-study: series={args.series} ===")
+    sp = r.get("spread_stats", {})
+    tf = r.get("taker_fee_stats", {})
+    print(f"  windows={r.get('n_windows')} decision_points={r.get('n_decision_points')}")
+    print(f"  cost-to-cross: spread mean/median={_nfmt(sp.get('mean'), 3)}/"
+          f"{_nfmt(sp.get('median'), 3)}  taker_fee mean={_nfmt(tf.get('mean'), 4)}")
+    for side, a in (r.get("central_cohorts") or {}).items():
+        print(f"  {side}/join/close: eligible={a['eligible']} fills={a['fills']} "
+              f"fill_rate={_nfmt(a['fill_rate'], 3)} win|fill={_nfmt(a['win_rate_given_fill'], 3)} "
+              f"makerEV={_nfmt(a['maker_ev_cents_per_fill'], 2)}c/fill "
+              f"takerEV={_nfmt(a['taker_ev_cents_per_decision'], 2)}c/decision")
+    df = r.get("double_fill", {})
+    print(f"  both-sides: double_fills={df.get('n_double_fills')}/{df.get('n_quote_points')} "
+          f"mean_locked_net={_nfmt(df.get('mean_locked_net'), 4)}")
+    v = r.get("verdict", {})
+    print(f"  verdict: positive_lower_bound_sides={v.get('sides_with_positive_conservative_maker_ev')}")
+    print(f"  {v.get('interpretation')}")
+    print(f"  report={r.get('report_file')}")
+    print("  note: READ-ONLY lower-bound study; no orders; no paper; live disabled.")
+    return 0
+
+
 def cmd_kalshi_paper_calibrator_swap_review(cfg: AppConfig, args: argparse.Namespace) -> int:
     """PAPER-ONLY calibration-safety review: is identity_raw/Platt safer than promoted isotonic?"""
     from .venues.kalshi.paper_calibrator_swap import run_swap_review
@@ -4676,6 +3757,7 @@ _COMMANDS = {
     "kalshi-edge-policy-report": cmd_kalshi_edge_policy_report,
     "kalshi-edge-threshold-sweep": cmd_kalshi_edge_threshold_sweep,
     "kalshi-uncertainty-audit": cmd_kalshi_uncertainty_audit,
+    "kalshi-maker-entry-study": cmd_kalshi_maker_entry_study,
     "kalshi-calibration-compare": cmd_kalshi_calibration_compare,
     "kalshi-probability-repair": cmd_kalshi_probability_repair,
     "kalshi-market-shrink-sweep": cmd_kalshi_market_shrink_sweep,
@@ -4716,24 +3798,8 @@ _COMMANDS = {
     "record-deribit": cmd_record_deribit,
     "kalshi-auth-smoke": cmd_kalshi_auth_smoke,
     "run-kalshi-paper-pipeline": cmd_run_kalshi_paper_pipeline,
-    # ----- Polymarket BTC 5m (DORMANT; legacy/manual only) -----
-    "discover-markets": cmd_discover_markets,
-    "debug-discovery": cmd_debug_discovery,
-    "inspect-market": cmd_inspect_market,
-    "record": cmd_record,
-    "record-market": cmd_record_market,
-    "collect-continuous": cmd_collect_continuous,
+    # shared BTC underlying recorder (Coinbase/Binance REST; venue-agnostic)
     "record-underlying": cmd_record_underlying,
-    "backfill-settlements": cmd_backfill_settlements,
-    "backfill-official-chainlink": cmd_backfill_official_chainlink,
-    "build-features": cmd_build_features,
-    "decide": cmd_decide,
-    "data-readiness": cmd_data_readiness,
-    "paper-backtest": cmd_paper_backtest,
-    "run-paper-pipeline": cmd_run_paper_pipeline,
-    "label-status": cmd_label_status,
-    "paper": cmd_paper,
-    "eod": cmd_eod,
 }
 
 
@@ -4947,6 +4013,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candidate", default=None, dest="candidate",
                         choices=["identity_raw", "platt", "fresh_isotonic"],
                         help="kalshi-paper-calibrator-swap: which staged calibrator to swap in")
+    # ----- kalshi-maker-entry-study (READ-ONLY) -----
+    parser.add_argument("--improve-cents", type=int, default=1, dest="improve_cents",
+                        help="kalshi-maker-entry-study: cents above best bid for 'improve' mode (default 1)")
+    parser.add_argument("--maker-fee-rate", type=float, default=0.0, dest="maker_fee_rate",
+                        help="kalshi-maker-entry-study: maker fee rate (default 0.0 = ASSUMED zero maker fee)")
+    parser.add_argument("--rest-horizons", default=None, dest="rest_horizons",
+                        help="kalshi-maker-entry-study: comma list of rest seconds + 'close' (default 60,180,300,close)")
     # ----- kalshi-reprice-lag-* / shock-scan (READ-ONLY event study) -----
     parser.add_argument("--start-date", default=None, dest="start_date",
                         help="reprice-lag: start day YYYYMMDD (inclusive)")

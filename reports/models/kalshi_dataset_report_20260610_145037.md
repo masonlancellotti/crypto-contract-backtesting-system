@@ -1,0 +1,98 @@
+# Kalshi model dataset report — KXBTC15M
+
+- status: **TRAINING_READY**
+- dataset_file: `C:\Users\mason\Downloads\polymarket-btc-five-mins\data\models\kalshi_dataset_20260610_145037.jsonl`
+- final_model_rows: 121633
+- distinct_windows: 769
+- gate_windows: 769 / train 150 (backtest 60)
+- windows_remaining_to_backtest: 0
+- windows_remaining_to_train: 0
+- feature_set_version_counts: {'None': 2315, '2': 3442, '3': 115876}
+- deribit_included (selected for model): False  strict: False
+
+## Row accounting (every drop has a reason)
+- total_feature_rows: 238097
+- feature_rows_with_orderbook: 131823
+- feature_rows_with_underlying: 238084
+- feature_rows_with_start_reference: 136515
+- feature_rows_joined_to_official: 121633
+- rows_rejected_missing_book: 106274
+- rows_rejected_missing_underlying: 4
+- rows_rejected_missing_label: 625
+- rows_rejected_window_closed_or_bad_book: 9561
+- rows_rejected_stale_source: 0
+- rows_rejected_old_feature_version: 0
+- final_model_rows: 121633
+
+## Deribit (OPTIONAL; column presence != candidate-feature selection)
+- candidate_feature_group_status: **EXCLUDED_BY_CONFIG**
+- columns_present: True
+- enabled_in_config: False
+- include_in_model_features: False
+- selected_for_model_features: False
+- rows_with_deribit_used: 22584/121633 (stale 74633, fraction_used 0.1857)
+- selected_candidate_feature_count: 0
+- Column presence != candidate-feature selection. Disabled/leftover Deribit columns are never silently fed to the model; selection requires DERIBIT_INCLUDE_IN_MODEL_FEATURES (and an enabled source, or an explicit allow-historical opt-in).
+
+## Training-feature missingness (fraction None over final rows)
+- seconds_to_close: 0.0
+- fraction_window_elapsed: 0.0
+- distance_to_start: 0.1345
+- distance_to_line_vol_normalized: 0.1473
+- yes_bid: 0.0
+- yes_ask: 0.0
+- no_bid: 0.0
+- no_ask: 0.0
+- executable_yes_buy_price: 0.0
+- executable_no_buy_price: 0.0
+- yes_spread: 0.019
+- no_spread: 0.019
+- top_depth: 0.019
+- depth_imbalance: 0.019
+- quote_age_ms: 1.0  <-- always missing
+- spot_return_5s: 0.0191
+- spot_return_15s: 0.0194
+- spot_return_30s: 0.0197
+- spot_return_60s: 0.0202
+- spot_return_180s: 0.0227
+- spot_return_since_window_start: 0.019
+- spot_sigma_per_sqrt_s: 0.001
+- realized_vol_30s: 0.0373
+- realized_vol_60s: 0.0356
+- realized_vol_180s: 0.0255
+- realized_vol_window_to_date: 0.0336
+- spot_perp_basis: 0.019
+- spot_perp_basis_change_60s: 0.0203
+- binance_queue_imbalance: 0.019
+- binance_ofi_best: 0.0191
+- spot_cvd_60s: 0.019
+- perp_cvd_60s: 0.019
+- spot_signed_trade_imbalance_60s: 0.019
+- perp_signed_trade_imbalance_60s: 0.019
+- spot_trade_intensity_60s: 0.019
+- perp_trade_intensity_60s: 0.019
+- coinbase_spread: 0.019
+- binance_spread: 0.019
+- deribit_available: 0.0473
+- deribit_stale: 0.0473
+- deribit_dvol: 0.8143  <-- often missing
+- deribit_historical_vol: 0.8143  <-- often missing
+- deribit_near_expiry_iv: 0.8143  <-- often missing
+- deribit_atm_iv: 0.8143  <-- often missing
+- deribit_options_open_interest_total: 0.8143  <-- often missing
+- deribit_put_call_oi_ratio: 0.8143  <-- often missing
+- deribit_put_call_volume_ratio: 0.8143  <-- often missing
+- deribit_skew_proxy: 0.8143  <-- often missing
+- deribit_iv_minus_realized_vol_60s: 0.8173  <-- often missing
+- coinbase_stale: 0.019
+- binance_stale: 0.019
+- has_spot_feed: 0.019
+- has_perp_feed: 0.019
+
+## Leakage exclusions (never in training matrix)
+- binance_best_ask, binance_best_bid, binance_microprice, coinbase_best_ask, coinbase_best_bid, decision_state, fill_status, is_paper, known_outcome, label_source, label_source_status, label_yes_resolved, mid_yes_diagnostic, paper_pnl, paper_pnl_when_known, reference_price, reference_start_price, result, settlement_outcome, settlement_outcome_when_known, settlement_status, simulated_fill_price, simulated_fill_size
+
+## Safety
+- OFFICIAL feature-backed labels only; orphan labels excluded.
+- Windows (not rows) drive the gate; purge/embargo applied at split time.
+- Hard Up/Down class is diagnostic only; no PAPER_CANDIDATE; live disabled.

@@ -45,17 +45,6 @@ def test_check_live_disabled_passes():
     assert main(["check-live-disabled"]) == 0
 
 
-def test_polymarket_is_dormant_by_default():
-    from btc5m.venues.polymarket import PolymarketDormantError, require_polymarket_enabled
-    cfg = load_config(mode="paper")
-    assert cfg.polymarket_dormant is True
-    assert cfg.primary_venue == "kalshi"
-    with pytest.raises(PolymarketDormantError):
-        require_polymarket_enabled(cfg)
-    cfg.polymarket_dormant = False
-    require_polymarket_enabled(cfg)  # no raise when explicitly re-enabled
-
-
 def test_kalshi_data_readiness_offline(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TRADING_MODE", "paper")

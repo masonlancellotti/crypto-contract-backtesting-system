@@ -1,9 +1,8 @@
 from btc5m.config import load_config
-from btc5m.execution.base import ExecutionContext
-from btc5m.execution.live_polymarket import LivePolymarketExecutionAdapter
+from btc5m.execution.live_kalshi import LiveKalshiExecutionAdapter
 from btc5m.notifications import build_notifier
 from btc5m.notifications.noop import NoopNotifier
-from btc5m.schemas import BookLevel, Order, OrderSide, Outcome, RiskDecision
+from btc5m.schemas import Order, OrderSide, Outcome
 
 
 def _order():
@@ -12,19 +11,16 @@ def _order():
 
 def test_live_adapter_refuses_by_default():
     cfg = load_config(mode="paper")  # not live, kill switch on, no creds
-    adapter = LivePolymarketExecutionAdapter(cfg)
-    ctx = ExecutionContext(levels=[BookLevel(0.51, 100)], risk_decision=RiskDecision.ok())
-    fill = adapter.submit(_order(), ctx)
-    assert fill.status == "rejected"
-    assert not fill.is_paper
-    assert "LIVE REFUSED" in fill.reason
+    adapter = LiveKalshiExecutionAdapter(cfg)
+    fill = adapter.submit(_order(), None)
+    assert fill.get("status") == "rejected"
+    assert fill.get("live_submission_allowed") is False
 
 
 def test_live_blockers_listed():
     cfg = load_config(mode="paper")
-    adapter = LivePolymarketExecutionAdapter(cfg)
-    ctx = ExecutionContext(levels=[BookLevel(0.51, 100)], risk_decision=RiskDecision.ok())
-    blockers = adapter.preflight(_order(), ctx)
+    adapter = LiveKalshiExecutionAdapter(cfg)
+    blockers = adapter.preflight(_order(), None)
     assert blockers  # must be non-empty with safe defaults
 
 
