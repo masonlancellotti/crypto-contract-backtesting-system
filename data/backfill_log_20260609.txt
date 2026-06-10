@@ -1,0 +1,11 @@
+=== kalshi-backfill-trades: series=KXBTC15M start=20260609 end=20260609 ===
+  existing trade_ids on disk: 3633899
+  WARNING chunk 2026-06-09 00:00 hit the page cap (1000x300); shrink --chunk-hours to avoid gaps
+  WARNING chunk 2026-06-09 01:00 hit the page cap (1000x300); shrink --chunk-hours to avoid gaps
+  WARNING chunk 2026-06-09 02:00 hit the page cap (1000x300); shrink --chunk-hours to avoid gaps
+  WARNING chunk 2026-06-09 03:00 hit the page cap (1000x300); shrink --chunk-hours to avoid gaps
+  progress: through 2026-06-10 00:00 written=757216 fetched=4562654
+  chunks=24 fetched=4562654 series_matched=757216 written=757216 dupes_skipped=0 errors=0
+  WARNING: 4 chunk(s) hit the page cap -> shrink --chunk-hours
+  days_touched=1
+  note: READ-ONLY public tape; idempotent (trade_id dedupe); no orders; live disabled.

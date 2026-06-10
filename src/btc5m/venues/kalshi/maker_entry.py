@@ -38,7 +38,7 @@ from __future__ import annotations
 import csv
 import json
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from .fees import KalshiFeeModel
@@ -54,6 +54,21 @@ def _ts() -> str:
 
 def _utc_day(ms: int) -> str:
     return datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc).strftime("%Y-%m-%d")
+
+
+def _day_start_ms(day: Optional[str]) -> Optional[int]:
+    """YYYYMMDD -> epoch ms at UTC midnight (inclusive lower bound)."""
+    if not day:
+        return None
+    return int(datetime.strptime(day, "%Y%m%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def _day_end_ms(day: Optional[str]) -> Optional[int]:
+    """YYYYMMDD -> epoch ms at the NEXT UTC midnight (exclusive upper bound)."""
+    if not day:
+        return None
+    d = datetime.strptime(day, "%Y%m%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+    return int(d.timestamp() * 1000)
 
 
 def _mean(xs: list) -> Optional[float]:
@@ -186,23 +201,38 @@ def simulate_maker_entries(config, *, series: str = "KXBTC15M",
                            improve_cents: int = 1,
                            rest_horizons: Optional[list] = None,
                            maker_fee_rate: float = 0.0,
-                           fill_model: str = "quote") -> dict:
+                           fill_model: str = "quote",
+                           start_date: Optional[str] = None,
+                           end_date: Optional[str] = None,
+                           preloaded: Optional[tuple] = None) -> dict:
     """Run the maker-entry simulation over all labeled windows.
 
     ``fill_model``: "quote" (v1: fill when the quote crosses the limit —
     conservative lower bound), "prints-through" (REAL prints, certain fills:
     price traded strictly through the level), or "prints-front" (REAL prints,
     front-of-queue at the level — optimistic upper bound).
+
+    ``start_date``/``end_date`` (YYYYMMDD, inclusive) filter windows by their
+    UTC window-start day, enabling forward/out-of-sample analysis. The result
+    carries ``date_filter`` with before/after window counts.
+
+    ``preloaded`` = (snaps_by_tk, labels, prints_by_tk) lets callers that run
+    several variants load the (large) inputs once.
     """
     if fill_model not in ("quote", "prints-through", "prints-front"):
         raise ValueError(f"unknown fill_model: {fill_model!r}")
     horizons = rest_horizons or [60, 180, 300, CLOSE_HORIZON]
-    snaps_by_tk = load_window_snapshots(config, series=series)
-    labels = _official_label_map(config)
-    prints_by_tk: dict[str, list[dict]] = {}
-    if fill_model != "quote":
-        from .backfill_trades import load_trade_prints
-        prints_by_tk = load_trade_prints(config, series=series)
+    if preloaded is not None:
+        snaps_by_tk, labels, prints_by_tk = preloaded
+    else:
+        snaps_by_tk = load_window_snapshots(config, series=series)
+        labels = _official_label_map(config)
+        prints_by_tk = {}
+        if fill_model != "quote":
+            from .backfill_trades import load_trade_prints
+            prints_by_tk = load_trade_prints(config, series=series)
+    start_ms = _day_start_ms(start_date)
+    end_ms = _day_end_ms(end_date)
     taker_fees = KalshiFeeModel.from_config(config)
     maker_fees = KalshiFeeModel(rate=maker_fee_rate, status="ASSUMED_ZERO_MAKER_FEE"
                                 if maker_fee_rate == 0.0 else "ASSUMED")
@@ -214,12 +244,20 @@ def simulate_maker_entries(config, *, series: str = "KXBTC15M",
     windows_used: set[str] = set()
     double_fill_pairs: list[dict] = []  # both-sides join quotes; per decision point
 
+    windows_before_filter = 0
+    windows_filtered_out = 0
     for tk, snaps in snaps_by_tk.items():
         y = labels.get(tk)
         if y is None or not snaps:
             continue
         if fill_model != "quote" and not prints_by_tk.get(tk):
             continue  # print-based fills need the window's tape
+        windows_before_filter += 1
+        w_start = snaps[0].get("window_start_ms") or snaps[0]["recv_ms"]
+        if (start_ms is not None and w_start < start_ms) or \
+           (end_ms is not None and w_start >= end_ms):
+            windows_filtered_out += 1
+            continue
         prs = prints_by_tk.get(tk, [])
         windows_used.add(tk)
         close_ms = snaps[0].get("close_ms")
@@ -274,6 +312,12 @@ def simulate_maker_entries(config, *, series: str = "KXBTC15M",
         "horizons": horizons,
         "fill_model": fill_model,
         "n_tickers_with_prints": len(prints_by_tk),
+        "date_filter": {
+            "start_date": start_date, "end_date": end_date,
+            "windows_before_filter": windows_before_filter,
+            "windows_after_filter": windows_before_filter - windows_filtered_out,
+            "windows_filtered_out": windows_filtered_out,
+        },
         "improve_cents": improve_cents,
         "maker_fee_rate": maker_fee_rate,
         "maker_fee_status": maker_fees.status,
@@ -502,9 +546,13 @@ def write_maker_entry_report(config, sim: dict, analysis: dict) -> dict:
                          "filled when the tape traded AT or through the level. OPTIMISTIC upper "
                          "bound — real queue position would forfeit some at-level fills."),
     }[fm]
+    dfil = sim.get("date_filter") or {}
     lines = [
         f"# Kalshi maker-entry feasibility study — {sim['series']} (fill model: {fm})", "",
         f"> READ-ONLY research. {fill_blurb} No orders, no paper, no promotion; live disabled.", "",
+        f"- date filter: start={dfil.get('start_date') or 'none'} end={dfil.get('end_date') or 'none'} "
+        f"(inclusive UTC window-start days)  windows before/after filter: "
+        f"{dfil.get('windows_before_filter')}/{dfil.get('windows_after_filter')}",
         f"- windows: {sim['n_windows_with_label_and_books']}  decision points: "
         f"{sim['n_decision_points']}  (one per market-minute; sides×modes per point)",
         f"- cost to cross today: spread mean/median/p90 = {_f(sp['mean'], 3)}/"
@@ -568,13 +616,28 @@ def write_maker_entry_report(config, sim: dict, analysis: dict) -> dict:
 def run_maker_entry_study(config, *, series: str = "KXBTC15M", improve_cents: int = 1,
                           maker_fee_rate: float = 0.0,
                           rest_horizons: Optional[list] = None,
-                          fill_model: str = "quote") -> dict:
+                          fill_model: str = "quote",
+                          start_date: Optional[str] = None,
+                          end_date: Optional[str] = None) -> dict:
     sim = simulate_maker_entries(config, series=series, improve_cents=improve_cents,
                                  rest_horizons=rest_horizons, maker_fee_rate=maker_fee_rate,
-                                 fill_model=fill_model)
+                                 fill_model=fill_model, start_date=start_date,
+                                 end_date=end_date)
+    if not sim["decisions"]:
+        return {"series": series, "status": "BLOCKED_NO_DATA_IN_RANGE",
+                "fill_model": fill_model, "date_filter": sim.get("date_filter"),
+                "blockers": [
+                    f"no usable windows in range start={start_date or 'none'} "
+                    f"end={end_date or 'none'} (windows before filter: "
+                    f"{sim['date_filter']['windows_before_filter']}, after: "
+                    f"{sim['date_filter']['windows_after_filter']})",
+                    "check kalshi-data-readiness and that trade prints cover the range "
+                    "(kalshi-backfill-trades) before re-running"],
+                "live_submission_allowed": False}
     analysis = analyze_maker_entries(sim)
     files = write_maker_entry_report(config, sim, analysis)
     return {"series": series, "status": "OK", "fill_model": fill_model,
+            "date_filter": sim.get("date_filter"),
             "n_windows": sim["n_windows_with_label_and_books"],
             "n_decision_points": sim["n_decision_points"],
             "spread_stats": sim["spread_stats"], "taker_fee_stats": sim["taker_fee_stats"],
@@ -582,3 +645,263 @@ def run_maker_entry_study(config, *, series: str = "KXBTC15M", improve_cents: in
                                 for s in ("YES", "NO")},
             "double_fill": analysis["double_fill"], "verdict": analysis["verdict"],
             **files, "live_submission_allowed": False}
+
+
+# --------------------------------------------------------------------------- #
+# Deep-favorite maker validation (READ-ONLY; never recommends paper/live)
+# --------------------------------------------------------------------------- #
+FAVORITE_BUCKETS = (("YES", 0.80, 0.90), ("YES", 0.90, 1.00),
+                    ("NO", 0.80, 0.90), ("NO", 0.90, 1.00))
+MAKER_FEE_STRESS_RATE = 0.07   # stress: makers pay the full taker schedule
+
+# Verdict thresholds (conservative; a "shadow candidate" still goes through the
+# full promotion/preflight machinery later — this NEVER enables paper/live).
+_FWD_MIN_FILLS_SMALL, _FWD_MIN_DAYS_SMALL, _FWD_MIN_WINDOWS_SMALL = 30, 2, 20
+_FWD_MIN_FILLS, _FWD_MIN_DAYS, _FWD_MIN_WINDOWS = 100, 5, 50
+_MAX_TOP_DAY_FILL_SHARE, _MAX_TOP_WINDOW_FILL_SHARE = 0.5, 0.2
+
+
+def favorite_verdict(*, through_full_ev: Optional[float], front_full_ev: Optional[float],
+                     through_fwd_ev: Optional[float], front_fwd_ev: Optional[float],
+                     through_fwd_ev_stress: Optional[float], fwd_fills: int,
+                     fwd_windows: int, fwd_days: int, fwd_positive_days: int,
+                     top_day_fill_share: Optional[float],
+                     top_window_fill_share: Optional[float]) -> dict:
+    """Tiered verdict for one favorite bucket. EVs are maker c/fill (fee 0 unless
+    marked stress). NEVER yields a paper/live recommendation —
+    ``shadow_candidate_later`` only flags eligibility for a FUTURE shadow review."""
+    reasons: list[str] = []
+    concentrated = bool(
+        (top_day_fill_share is not None and top_day_fill_share > _MAX_TOP_DAY_FILL_SHARE)
+        or (top_window_fill_share is not None
+            and top_window_fill_share > _MAX_TOP_WINDOW_FILL_SHARE))
+    if concentrated:
+        reasons.append(f"concentrated: top_day_share={top_day_fill_share} "
+                       f"top_window_share={top_window_fill_share}")
+    hist_positive = bool(through_full_ev is not None and through_full_ev > 0)
+    if not hist_positive or (front_full_ev is not None and front_full_ev <= 0
+                             and (through_full_ev or 0) <= 0):
+        reasons.append(f"historical not positive at the conservative bound "
+                       f"(through={through_full_ev}, front={front_full_ev})")
+    if concentrated or not hist_positive:
+        return {"verdict": "dead", "reasons": reasons}
+
+    fwd_small = (fwd_fills < _FWD_MIN_FILLS_SMALL or fwd_days < _FWD_MIN_DAYS_SMALL
+                 or fwd_windows < _FWD_MIN_WINDOWS_SMALL)
+    if fwd_small:
+        reasons.append(f"forward sample too small (fills={fwd_fills}, days={fwd_days}, "
+                       f"windows={fwd_windows})")
+        return {"verdict": "needs_more_forward_data", "reasons": reasons}
+
+    fwd_positive = bool(through_fwd_ev is not None and through_fwd_ev > 0)
+    if not fwd_positive:
+        if (front_fwd_ev is not None and front_fwd_ev <= 0
+                and fwd_fills >= _FWD_MIN_FILLS):
+            reasons.append(f"forward negative on BOTH fill models with adequate sample "
+                           f"(through={through_fwd_ev}, front={front_fwd_ev}, fills={fwd_fills})")
+            return {"verdict": "dead", "reasons": reasons}
+        reasons.append(f"forward conservative bound not positive yet "
+                       f"(through={through_fwd_ev}, front={front_fwd_ev})")
+        return {"verdict": "needs_more_forward_data", "reasons": reasons}
+
+    strong = (fwd_fills >= _FWD_MIN_FILLS and fwd_days >= _FWD_MIN_DAYS
+              and fwd_windows >= _FWD_MIN_WINDOWS
+              and fwd_days > 0 and (fwd_positive_days / fwd_days) >= 0.6
+              and through_fwd_ev_stress is not None and through_fwd_ev_stress > 0)
+    if strong:
+        reasons.append(f"positive after stress fees across {fwd_days} forward days "
+                       f"({fwd_positive_days} positive), {fwd_fills} fills, "
+                       f"{fwd_windows} windows")
+        return {"verdict": "shadow_candidate_later", "reasons": reasons}
+    reasons.append(f"positive historical+forward but below shadow thresholds "
+                   f"(fills={fwd_fills}/{_FWD_MIN_FILLS}, days={fwd_days}/{_FWD_MIN_DAYS}, "
+                   f"windows={fwd_windows}/{_FWD_MIN_WINDOWS}, "
+                   f"positive_days={fwd_positive_days}, stress_ev={through_fwd_ev_stress})")
+    return {"verdict": "research_lead", "reasons": reasons}
+
+
+def _drawdown_and_streak(recs: list[dict], fee_model: KalshiFeeModel) -> dict:
+    """Max drawdown + longest losing streak over fills ordered by fill time."""
+    seq = sorted((r for r in recs if r["fill_ms"] is not None),
+                 key=lambda r: r["fill_ms"])
+    cum = peak = 0.0
+    max_dd = 0.0
+    streak = worst = 0
+    for r in seq:
+        pnl = r["y_side"] - r["limit"] - fee_model.per_contract_fee(r["limit"])
+        cum += pnl
+        peak = max(peak, cum)
+        max_dd = min(max_dd, cum - peak)
+        if pnl < 0:
+            streak += 1
+            worst = max(worst, streak)
+        else:
+            streak = 0
+    return {"max_drawdown": round(max_dd, 4), "longest_losing_streak": worst,
+            "fills_in_sequence": len(seq)}
+
+
+def _bucket_name(side: str, lo: float, hi: float) -> str:
+    return f"{side}/[{int(lo * 100)}c,{int(hi * 100)}c)"
+
+
+def run_maker_favorite_report(config, *, series: str = "KXBTC15M",
+                              start_date: Optional[str] = None,
+                              end_date: Optional[str] = None,
+                              improve_cents: int = 1) -> dict:
+    """Deep-favorite maker validation: YES/NO 80-90c and 90-100c join-bid quotes,
+    prints-through vs prints-front, maker fee 0.00 vs 0.07 stress, maker vs taker,
+    full-history vs forward (>= ``start_date``) samples, with tiered verdicts.
+
+    READ-ONLY: no orders, no paper, no promotion; never recommends paper/live.
+    """
+    snaps_by_tk = load_window_snapshots(config, series=series)
+    labels = _official_label_map(config)
+    from .backfill_trades import load_trade_prints
+    prints_by_tk = load_trade_prints(config, series=series)
+    pre = (snaps_by_tk, labels, prints_by_tk)
+
+    sims = {m: simulate_maker_entries(config, series=series, fill_model=m,
+                                      improve_cents=improve_cents, end_date=end_date,
+                                      preloaded=pre)
+            for m in ("prints-through", "prints-front")}
+    if not sims["prints-through"]["decisions"]:
+        return {"series": series, "status": "BLOCKED_NO_DATA",
+                "blockers": ["no labeled windows with both books and trade prints; "
+                             "run kalshi-backfill-trades first"],
+                "live_submission_allowed": False}
+
+    fee0 = KalshiFeeModel(rate=0.0, status="ASSUMED_ZERO_MAKER_FEE")
+    fee_stress = KalshiFeeModel(rate=MAKER_FEE_STRESS_RATE, status="STRESS")
+    taker = KalshiFeeModel.from_config(config)
+    fwd_ms = _day_start_ms(start_date)
+
+    def in_bucket(d, side, lo, hi):
+        return (d["side"] == side and d["mode"] == "join"
+                and (lo - 1e-9) <= d["limit"] < (hi - 1e-9))
+
+    buckets: dict = {}
+    for side, lo, hi in FAVORITE_BUCKETS:
+        bname = _bucket_name(side, lo, hi)
+        b: dict = {"cohorts": {}, "by_day": {}, "by_ttc": {}}
+        for model, sim in sims.items():
+            recs_full = [d for d in sim["decisions"] if in_bucket(d, side, lo, hi)]
+            recs_fwd = [d for d in recs_full if fwd_ms is not None and d["t0"] >= fwd_ms]
+            for sample, recs in (("full", recs_full), ("forward", recs_fwd)):
+                for fee, fname in ((fee0, "fee0.00"), (fee_stress, "fee0.07")):
+                    b["cohorts"][f"{model}|{sample}|{fname}"] = _agg(
+                        recs, fee, taker, CLOSE_HORIZON)
+        # detail breakdowns on the conservative model at the assumed (0) maker fee
+        thr_full = [d for d in sims["prints-through"]["decisions"]
+                    if in_bucket(d, side, lo, hi)]
+        thr_fwd = [d for d in thr_full if fwd_ms is not None and d["t0"] >= fwd_ms]
+        for day in sorted({d["day"] for d in thr_full}):
+            b["by_day"][day] = _agg([d for d in thr_full if d["day"] == day],
+                                    fee0, taker, CLOSE_HORIZON)
+        for d in thr_full:
+            d["_ttc"] = _bucket_secs(d["secs_to_close"])
+        for ttc in sorted({d["_ttc"] for d in thr_full}):
+            b["by_ttc"][ttc] = _agg([d for d in thr_full if d["_ttc"] == ttc],
+                                    fee0, taker, CLOSE_HORIZON)
+        b["risk_full"] = _drawdown_and_streak(thr_full, fee0)
+        b["risk_forward"] = _drawdown_and_streak(thr_fwd, fee0)
+
+        fills_full = [d for d in thr_full if d["fill_ms"] is not None]
+        day_counts = Counter(d["day"] for d in fills_full)
+        win_counts = Counter(d["ticker"] for d in fills_full)
+        b["concentration"] = {
+            "top_day_fill_share": (day_counts.most_common(1)[0][1] / len(fills_full))
+                                  if fills_full else None,
+            "top_window_fill_share": (win_counts.most_common(1)[0][1] / len(fills_full))
+                                     if fills_full else None,
+            "fill_days": len(day_counts), "fill_windows": len(win_counts),
+        }
+        warn = []
+        c = b["concentration"]
+        if c["top_day_fill_share"] is not None and c["top_day_fill_share"] > _MAX_TOP_DAY_FILL_SHARE:
+            warn.append(f"top day holds {c['top_day_fill_share']:.0%} of fills")
+        if c["top_window_fill_share"] is not None and c["top_window_fill_share"] > _MAX_TOP_WINDOW_FILL_SHARE:
+            warn.append(f"top window holds {c['top_window_fill_share']:.0%} of fills")
+        b["concentration_warnings"] = warn
+
+        fwd_day_evs = []
+        if fwd_ms is not None:
+            for day in sorted({d["day"] for d in thr_fwd}):
+                a = _agg([d for d in thr_fwd if d["day"] == day], fee0, taker, CLOSE_HORIZON)
+                if a["maker_ev_cents_per_fill"] is not None:
+                    fwd_day_evs.append(a["maker_ev_cents_per_fill"])
+        g = lambda k: b["cohorts"][k]["maker_ev_cents_per_fill"]  # noqa: E731
+        fwd_agg = b["cohorts"]["prints-through|forward|fee0.00"]
+        b["verdict"] = favorite_verdict(
+            through_full_ev=g("prints-through|full|fee0.00"),
+            front_full_ev=g("prints-front|full|fee0.00"),
+            through_fwd_ev=g("prints-through|forward|fee0.00"),
+            front_fwd_ev=g("prints-front|forward|fee0.00"),
+            through_fwd_ev_stress=g("prints-through|forward|fee0.07"),
+            fwd_fills=fwd_agg["fills"], fwd_windows=fwd_agg["distinct_fill_windows"],
+            fwd_days=len(fwd_day_evs),
+            fwd_positive_days=sum(1 for v in fwd_day_evs if v > 0),
+            top_day_fill_share=c["top_day_fill_share"],
+            top_window_fill_share=c["top_window_fill_share"])
+        buckets[bname] = b
+
+    files = _write_favorite_report(config, series=series, start_date=start_date,
+                                   end_date=end_date, sims=sims, buckets=buckets)
+    return {"series": series, "status": "OK", "forward_start": start_date,
+            "end_date": end_date,
+            "date_filter_through": sims["prints-through"].get("date_filter"),
+            "n_windows": sims["prints-through"]["n_windows_with_label_and_books"],
+            "buckets": buckets, **files, "live_submission_allowed": False}
+
+
+def _write_favorite_report(config, *, series, start_date, end_date, sims, buckets) -> dict:
+    ts = _ts()
+    rep_dir = config.reports_path() / "maker"
+    rep_dir.mkdir(parents=True, exist_ok=True)
+    md_path = rep_dir / f"kalshi_maker_favorite_report_{ts}.md"
+    csv_path = rep_dir / f"kalshi_maker_favorite_report_{ts}.csv"
+    dfil = sims["prints-through"].get("date_filter") or {}
+    lines = [
+        f"# Kalshi deep-favorite maker validation — {series}", "",
+        "> READ-ONLY. Join-bid quotes in the favorite buckets only, REAL trade-print fills "
+        "(through = certain, front = front-of-queue optimistic; truth between). Maker fee "
+        "0.00 (ASSUMED) vs 0.07 STRESS. Forward sample = windows on/after "
+        f"**{start_date or 'UNSET'}** (UTC). Never recommends paper/live; no orders.", "",
+        f"- windows in scope: {sims['prints-through']['n_windows_with_label_and_books']} "
+        f"(before/after end-date filter: {dfil.get('windows_before_filter')}/"
+        f"{dfil.get('windows_after_filter')})  forward boundary: {start_date or 'UNSET'} "
+        f" end: {end_date or 'none'}", "",
+    ]
+    for bname, b in buckets.items():
+        v = b["verdict"]
+        lines += [f"## {bname} — **verdict: {v['verdict']}**", "",
+                  *(f"- {r}" for r in v["reasons"]),
+                  *(f"- WARNING: {w}" for w in b["concentration_warnings"]),
+                  f"- risk (through, fee 0): full max_dd={b['risk_full']['max_drawdown']} "
+                  f"streak={b['risk_full']['longest_losing_streak']}; forward "
+                  f"max_dd={b['risk_forward']['max_drawdown']} "
+                  f"streak={b['risk_forward']['longest_losing_streak']}", ""]
+        lines += _cohort_table(b["cohorts"], f"{bname} cohorts (model|sample|maker-fee)")
+        lines += _cohort_table(b["by_day"], f"{bname} by UTC day (through, fee 0, full)")
+        lines += _cohort_table(b["by_ttc"], f"{bname} by seconds-to-close (through, fee 0, full)")
+    lines += ["## Safety",
+              "- READ-ONLY validation; no orders, no paper, no promotion, no threshold/buffer "
+              "changes; live_submission_allowed=false. A `shadow_candidate_later` verdict is "
+              "NOT a paper/live recommendation — it only flags eligibility for a future, "
+              "separately-gated shadow review.", ""]
+    md_path.write_text("\n".join(lines), encoding="utf-8")
+
+    with csv_path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["bucket", "cohort", "eligible", "fills", "fill_rate",
+                    "median_secs_to_fill", "win_rate_given_fill",
+                    "maker_ev_cents_per_fill", "maker_ev_cents_per_decision",
+                    "taker_ev_cents_per_decision", "distinct_fill_windows", "verdict"])
+        for bname, b in buckets.items():
+            for key, a in b["cohorts"].items():
+                w.writerow([bname, key, a["eligible"], a["fills"], a["fill_rate"],
+                            a["median_secs_to_fill"], a["win_rate_given_fill"],
+                            a["maker_ev_cents_per_fill"], a["maker_ev_cents_per_decision"],
+                            a["taker_ev_cents_per_decision"], a["distinct_fill_windows"],
+                            b["verdict"]["verdict"]])
+    return {"report_file": str(md_path), "csv_file": str(csv_path)}

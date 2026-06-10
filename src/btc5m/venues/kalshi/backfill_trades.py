@@ -132,8 +132,14 @@ def backfill_trades(config, *, series: str = "KXBTC15M", start_date: str,
     return counts
 
 
-def load_trade_prints(config, *, series: str = "KXBTC15M") -> dict[str, list[dict]]:
-    """Per-ticker, time-sorted trade prints (deduped by trade_id)."""
+def load_trade_prints(config, *, series: str = "KXBTC15M",
+                      slim: bool = True) -> dict[str, list[dict]]:
+    """Per-ticker, time-sorted trade prints (deduped by trade_id).
+
+    ``slim`` (default) keeps only the fields fill modeling needs — at the
+    full tape's volume (~650k prints/day) the discarded metadata would
+    multiply memory use several-fold.
+    """
     by_tk: dict[str, list[dict]] = {}
     seen: set[str] = set()
     d = config.data_path() / "normalized"
@@ -148,6 +154,12 @@ def load_trade_prints(config, *, series: str = "KXBTC15M") -> dict[str, list[dic
                 if e.get("created_time_ms") is None:
                     continue
                 seen.add(tid)
+                if slim:
+                    e = {"created_time_ms": e["created_time_ms"],
+                         "yes_price": e.get("yes_price"),
+                         "no_price": e.get("no_price"),
+                         "count": e.get("count"),
+                         "taker_side": e.get("taker_side")}
                 by_tk.setdefault(tk, []).append(e)
     for tk in by_tk:
         by_tk[tk].sort(key=lambda r: r["created_time_ms"])

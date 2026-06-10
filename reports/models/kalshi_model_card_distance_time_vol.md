@@ -6,7 +6,7 @@
 - model_backend: sklearn
 - created_by_command: kalshi-train-baselines
 - calibration_status: uncalibrated
-- created_at: 2026-06-10T18:05:16.497930+00:00  created_at_ms: 1781114716497
+- created_at: 2026-06-10T19:47:32.969336+00:00  created_at_ms: 1781120852969
 - model_schema_version: 1
 
 ## Intended use

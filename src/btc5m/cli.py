@@ -2505,13 +2505,26 @@ def cmd_kalshi_maker_entry_study(cfg: AppConfig, args: argparse.Namespace) -> in
     if horizons_arg:
         horizons = [h if h == "close" else float(h) for h in str(horizons_arg).split(",") if h]
     fill_model = getattr(args, "fill_model", "quote") or "quote"
+    start_date = getattr(args, "start_date", None)
+    end_date = getattr(args, "end_date", None)
     r = run_maker_entry_study(cfg, series=args.series,
                               improve_cents=int(getattr(args, "improve_cents", 1) or 1),
                               maker_fee_rate=float(getattr(args, "maker_fee_rate", 0.0) or 0.0),
-                              rest_horizons=horizons, fill_model=fill_model)
+                              rest_horizons=horizons, fill_model=fill_model,
+                              start_date=start_date, end_date=end_date)
     if getattr(args, "json", False):
         print(json.dumps(r, indent=2, default=str)); return 0
-    print(f"=== kalshi-maker-entry-study: series={args.series} fill_model={fill_model} ===")
+    print(f"=== kalshi-maker-entry-study: series={args.series} fill_model={fill_model} "
+          f"start={start_date or 'none'} end={end_date or 'none'} ===")
+    dfil = r.get("date_filter") or {}
+    print(f"  date filter: windows before/after = {dfil.get('windows_before_filter')}/"
+          f"{dfil.get('windows_after_filter')} (inclusive UTC window-start days)")
+    if r.get("status") == "BLOCKED_NO_DATA_IN_RANGE":
+        print("  BLOCKED:")
+        for b in r.get("blockers", []):
+            print(f"     - {b}")
+        print("  note: READ-ONLY; no orders; live disabled.")
+        return 0
     sp = r.get("spread_stats", {})
     tf = r.get("taker_fee_stats", {})
     print(f"  windows={r.get('n_windows')} decision_points={r.get('n_decision_points')}")
@@ -2530,6 +2543,53 @@ def cmd_kalshi_maker_entry_study(cfg: AppConfig, args: argparse.Namespace) -> in
     print(f"  {v.get('interpretation')}")
     print(f"  report={r.get('report_file')}")
     print("  note: READ-ONLY lower-bound study; no orders; no paper; live disabled.")
+    return 0
+
+
+def cmd_kalshi_maker_favorite_report(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """READ-ONLY deep-favorite maker validation (never recommends paper/live)."""
+    from .venues.kalshi.maker_entry import run_maker_favorite_report
+
+    start_date = getattr(args, "start_date", None)
+    end_date = getattr(args, "end_date", None)
+    r = run_maker_favorite_report(cfg, series=args.series, start_date=start_date,
+                                  end_date=end_date,
+                                  improve_cents=int(getattr(args, "improve_cents", 1) or 1))
+    if getattr(args, "json", False):
+        print(json.dumps(r, indent=2, default=str)); return 0
+    print(f"=== kalshi-maker-favorite-report: series={args.series} "
+          f"forward_start={start_date or 'UNSET'} end={end_date or 'none'} ===")
+    if r.get("status") != "OK":
+        print(f"  status={r['status']}")
+        for b in r.get("blockers", []):
+            print(f"     - {b}")
+        return 0
+    print(f"  windows in scope: {r.get('n_windows')}")
+    if not start_date:
+        print("  NOTE: no --start-date given -> forward sample is EMPTY; verdicts can "
+              "only be dead/needs_more_forward_data.")
+    for bname, b in r["buckets"].items():
+        v = b["verdict"]
+        thr_full = b["cohorts"]["prints-through|full|fee0.00"]
+        thr_fwd = b["cohorts"]["prints-through|forward|fee0.00"]
+        fr_fwd = b["cohorts"]["prints-front|forward|fee0.00"]
+        stress = b["cohorts"]["prints-through|forward|fee0.07"]
+        print(f"  {bname}: verdict={v['verdict']}")
+        print(f"     full(through,fee0): fills={thr_full['fills']} "
+              f"EV={_nfmt(thr_full['maker_ev_cents_per_fill'], 2)}c/fill "
+              f"win|fill={_nfmt(thr_full['win_rate_given_fill'], 3)} "
+              f"windows={thr_full['distinct_fill_windows']}")
+        print(f"     fwd(through,fee0): fills={thr_fwd['fills']} "
+              f"EV={_nfmt(thr_fwd['maker_ev_cents_per_fill'], 2)}c/fill "
+              f"windows={thr_fwd['distinct_fill_windows']}  "
+              f"fwd(front,fee0): EV={_nfmt(fr_fwd['maker_ev_cents_per_fill'], 2)}c  "
+              f"fwd(through,STRESS 0.07): EV={_nfmt(stress['maker_ev_cents_per_fill'], 2)}c")
+        for reason in v["reasons"]:
+            print(f"     - {reason}")
+        for warn in b["concentration_warnings"]:
+            print(f"     - WARNING: {warn}")
+    print(f"  report={r.get('report_file')}")
+    print("  note: READ-ONLY; verdicts never recommend paper/live; no orders; live disabled.")
     return 0
 
 
@@ -3781,6 +3841,7 @@ _COMMANDS = {
     "kalshi-edge-threshold-sweep": cmd_kalshi_edge_threshold_sweep,
     "kalshi-uncertainty-audit": cmd_kalshi_uncertainty_audit,
     "kalshi-maker-entry-study": cmd_kalshi_maker_entry_study,
+    "kalshi-maker-favorite-report": cmd_kalshi_maker_favorite_report,
     "kalshi-backfill-trades": cmd_kalshi_backfill_trades,
     "kalshi-calibration-compare": cmd_kalshi_calibration_compare,
     "kalshi-probability-repair": cmd_kalshi_probability_repair,
@@ -4052,9 +4113,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="kalshi-backfill-trades: tape chunk size in hours (default 1)")
     # ----- kalshi-reprice-lag-* / shock-scan (READ-ONLY event study) -----
     parser.add_argument("--start-date", default=None, dest="start_date",
-                        help="reprice-lag: start day YYYYMMDD (inclusive)")
+                        help="start day YYYYMMDD inclusive (reprice-lag / maker-entry-study / maker-favorite-report forward boundary / backfill-trades)")
     parser.add_argument("--end-date", default=None, dest="end_date",
-                        help="reprice-lag: end day YYYYMMDD (inclusive)")
+                        help="end day YYYYMMDD inclusive (reprice-lag / maker-entry-study / maker-favorite-report / backfill-trades)")
     parser.add_argument("--shock-threshold-bps", type=float, default=None, dest="shock_threshold_bps",
                         help="reprice-lag: 5s shock threshold in bps (scales 15/30/60s)")
     parser.add_argument("--horizon-seconds", default=None, dest="horizon_seconds",

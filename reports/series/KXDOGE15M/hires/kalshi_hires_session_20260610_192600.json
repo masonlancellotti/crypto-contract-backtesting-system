@@ -1,0 +1,126 @@
+{
+  "status": "OK",
+  "mode": "record",
+  "series": "KXDOGE15M",
+  "seconds": 900.0,
+  "live_submission_allowed": false,
+  "no_orders": true,
+  "blockers": [
+    "binance aggTrade disabled (default; bookTicker only - lighter)",
+    "kalshi: using READ-ONLY market-data WebSocket book source (orderbook_delta)"
+  ],
+  "summary": {
+    "counts": {
+      "hires_coinbase_ticker": 441,
+      "hires_binance_book_ticker": 80990,
+      "hires_kalshi_active_book": 18431
+    },
+    "joined_snapshots": 1953,
+    "active_ticker": "KXDOGE15M-26JUN101530-30",
+    "elapsed_s": 902.46,
+    "per_source": {
+      "coinbase": {
+        "messages": 441,
+        "connects": 1,
+        "errors": 0,
+        "drops": 0,
+        "last_recv_ms": 1781119556747,
+        "last_error": "",
+        "gaps_1s": 31,
+        "gaps_2s": 50,
+        "gaps_5s": 58,
+        "reconnects": 0
+      },
+      "binance": {
+        "messages": 80990,
+        "connects": 1,
+        "errors": 0,
+        "drops": 0,
+        "last_recv_ms": 1781119556555,
+        "last_error": "",
+        "gaps_1s": 0,
+        "gaps_2s": 0,
+        "gaps_5s": 0,
+        "book_msgs": 80990,
+        "trade_msgs": 0,
+        "trade_sampled_dropped": 0,
+        "rate_capped": 0,
+        "reconnects": 0
+      },
+      "kalshi": {
+        "messages": 18431,
+        "connects": 2,
+        "errors": 0,
+        "drops": 0,
+        "last_recv_ms": 1781119556554,
+        "last_error": "",
+        "gaps_1s": 85,
+        "gaps_2s": 15,
+        "gaps_5s": 1,
+        "reconnects": 1
+      }
+    },
+    "binance_streams": {
+      "aggtrade_enabled": false,
+      "binance_book_ticker_msgs_per_sec": 89.7,
+      "binance_agg_trade_msgs_per_sec": 0.0,
+      "binance_agg_trade_dropped_or_sampled": 0,
+      "binance_rate_capped": 0
+    },
+    "queue": {
+      "depth_current": 0,
+      "depth_max": 362,
+      "warn_size": 50000,
+      "warned": false,
+      "dropped_by_stream": {},
+      "high_priority_overflow": 0
+    },
+    "writer": {
+      "mode": "threaded",
+      "rows_written_by_stream": {
+        "hires_coinbase_ticker": 882,
+        "hires_binance_book_ticker": 161980,
+        "hires_kalshi_active_book": 36862,
+        "hires_joined_snapshot": 1953
+      },
+      "flush_count": 3163,
+      "rotate_count": 11,
+      "compression_count": 11,
+      "writer_errors": 0,
+      "writer_lag_ms": {
+        "p50": 1,
+        "p95": 13,
+        "max": 62
+      },
+      "recv_to_write_ms": {
+        "p50": 14,
+        "p95": 27,
+        "max": 2444
+      },
+      "write_latency_ms": {
+        "median": 0.010300020221620798,
+        "p95": 0.03800005652010441
+      }
+    },
+    "kalshi_poll_ms": {
+      "target": 500,
+      "actual_median": 2.0
+    },
+    "joined_age_ms": {
+      "coinbase_median": 3185,
+      "coinbase_max": 44028,
+      "binance_median": 21,
+      "binance_max": 668
+    },
+    "live_submission_allowed": false,
+    "no_orders": true
+  },
+  "output_paths": {
+    "raw": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\series\\KXDOGE15M\\raw\\hires",
+    "normalized": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\series\\KXDOGE15M\\normalized\\hires",
+    "joined": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\data\\series\\KXDOGE15M\\features\\hires"
+  },
+  "reports": {
+    "health_md": "C:\\Users\\mason\\Downloads\\polymarket-btc-five-mins\\reports\\series\\KXDOGE15M\\hires\\kalshi_hires_health_20260610_192600.md"
+  }
+}
