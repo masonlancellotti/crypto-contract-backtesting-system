@@ -20,7 +20,7 @@ Nothing in the current build can submit or cancel a real order.
 ## Why no order can be submitted
 - `LiveKalshiExecutionAdapter.submit()` / `cancel()` **always return a structured
   refusal and issue no HTTP** (tested: `urlopen` call count is 0 under default config).
-  There is a hard `_http_mutation` guard. Polymarket's live adapter refuses (dormant).
+  There is a hard `_http_mutation` guard. (The legacy Polymarket adapter was removed 2026-06-10.)
 - `live_submission_allowed` is a hard-`False` property on `LiveReadinessConfig`,
   `PaperPolicyConfig`, `LockConfig`, every `PolicyDecision`, every `LockDecision`,
   every dry-run order payload, and every order intent.
@@ -45,7 +45,7 @@ risk limits OK. A hard Up/Down class alone never trades. Today every model is
 ## What is NOT present (by design)
 - No flat-position same-market arbitrage scanner. The lock module only manages an
   EXISTING paper position (post-entry); it never scans flat markets for YES+NO<1.
-- No authenticated private reads / WS streaming (scaffold; `cryptography` not installed).
+- No authenticated private reads / WS streaming (scaffold; needs Kalshi API credentials).
 
 ## Verify anytime (read-only)
 ```powershell

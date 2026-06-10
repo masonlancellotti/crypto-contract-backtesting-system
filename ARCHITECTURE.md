@@ -1,14 +1,15 @@
 # ARCHITECTURE — Kalshi BTC 15m
 
 Concise map of the system after the prompt 0–9 build. Authoritative current state
-lives in `KALSHI_PIVOT_STATE.md`; copy-paste commands in `COMMANDS.md`; model
+lives in `PROJECT_STATE.md` + `RESEARCH_LEDGER.md`; copy-paste commands in `COMMANDS.md`; model
 details in `MODEL_PIPELINE.md`; safety in `LIVE_SAFETY.md`.
 
 ## Venues & feeds
 - **Primary venue: Kalshi `KXBTC15M`** (BTC up in next 15 min, Up/Down binary).
   Public REST market data needs no auth. Target = calibrated
   `P(YES/Up resolves to 1)`; settlement = 60s-avg **CF Benchmarks BRTI** at close ≥ open (GTE, tie→YES).
-- **Dormant/reference: Polymarket BTC 5m** — legacy code only, guarded by
+- **Removed 2026-06-10: Polymarket BTC 5m** — the legacy leg lives in git
+  history only (commit "Remove dormant Polymarket BTC 5m leg"); formerly guarded by
   `POLYMARKET_DORMANT=true`; not in the default pipeline; live adapter refuses.
 - **Core underlying feeds:** Coinbase BTC-USD spot (primary reference) + Binance
   USDT-M perp (basis/microprice/OFI + spot fallback), public REST polling.
@@ -54,14 +55,14 @@ ops/monitoring (read-only): ops-status · collector-status · gate-progress · d
   (stdlib LogisticRegression/StandardImputer/metrics); LightGBM/quantile are scaffolds.
 - `data/` — Coinbase/Binance REST, Deribit client, recorder; WS adapters scaffold.
 - `execution/` — `risk` (RiskManager), `paper`, `live_kalshi` (refusal adapter),
-  `live_polymarket` (dormant), `base`.
+  `live_kalshi` (refuses every order).
 - `notifications/` — Pushover (stdlib urllib) + Noop fallback (no Pusher).
 
 ## Dependencies
 Core runs on **stdlib + pyyaml + python-dotenv only**. numpy/pandas/scikit-learn/
 lightgbm/pyarrow are OPTIONAL (`pip install -e ".[models]"`); when absent the repo
 uses pure-Python models + JSONL/CSV output and reports degraded features via
-`dependency-check`. Live/WS auth needs `cryptography` (not installed; scaffolded).
+`dependency-check`. ML deps (numpy/pandas/sklearn/lightgbm) and `cryptography` are installed in the working venv; WS auth additionally needs Kalshi API credentials.
 
 ## Safety posture
 Paper/record-only by default; `LIVE_TRADING_ENABLED=false`, kill switch on, manual

@@ -72,5 +72,7 @@ pure-stdlib by default; nothing here trains a production model or enables live.
   after fees (`1 − yes_total_cost − no_total_cost`), deciding LOCK/RIDE/WATCH/REJECT.
   Position management, **not** a flat arb scanner; paper-only; never live.
 
-> Status (2026-06-02): gate ≈ 85–86 windows → backtest gate (60) reached; train/
-> calibration gate (150) not yet. Only diagnostic artifacts exist → no PAPER_CANDIDATE.
+> Status (2026-06-10): gate = 770 windows -> BOTH gates passed. A fresh
+> microstructure_logistic + isotonic pair (held-out ECE 0.026) is promoted for
+> PAPER ONLY. No edge is demonstrated (see RESEARCH_LEDGER.md); the policy
+> correctly emits no PAPER_CANDIDATEs.

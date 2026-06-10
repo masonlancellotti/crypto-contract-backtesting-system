@@ -1,6 +1,6 @@
 # Kalshi BTC 15m — command cheat sheet
 
-Copy-paste PowerShell. Primary venue **Kalshi KXBTC15M**; Polymarket dormant.
+Copy-paste PowerShell. Venue: **Kalshi KXBTC15M** (legacy Polymarket leg removed 2026-06-10).
 **Live trading is disabled by default and impossible without a separate future
 enable step.** All commands below are prefixed with the repo venv python:
 

@@ -1,8 +1,8 @@
 # RUNBOOK.md — Operations
 
 Operational guide for running `btc5m` safely. Default mode is **paper**; live
-trading is **disabled**. **PRIMARY venue: Kalshi BTC 15m (KXBTC15M).** Polymarket
-BTC 5m is dormant (sections numbered below are the legacy Polymarket path).
+trading is **disabled**. **Venue: Kalshi BTC 15m (KXBTC15M).** The legacy
+Polymarket BTC 5m leg was removed 2026-06-10 (recoverable from git history).
 
 ---
 
@@ -228,311 +228,29 @@ fees** (config; ASSUMED until verified) are subtracted from edge. Labels come fr
 Kalshi's OFFICIAL `result`; a BTC proxy is only ever PROVISIONAL_REFERENCE.
 Outputs: `data/raw|normalized/kalshi_*`, `data/labels/kalshi_settlement_labels-*`,
 `data/features/kalshi_feature_rows-*`, `data/paper/kalshi_paper_ledger-*`,
-`reports/paper/kalshi_session_summary-*`. See `KALSHI_PIVOT_STATE.md`.
+`reports/paper/kalshi_session_summary-*`. See `PROJECT_STATE.md` and `RESEARCH_LEDGER.md`.
 
 ---
 
-## (LEGACY / DORMANT — Polymarket BTC 5m) 1. Install dependencies
+## Setup (fresh machine)
 
-```bash
+```powershell
 python -m venv .venv
-# Windows PowerShell:
 .\.venv\Scripts\Activate.ps1
-# macOS/Linux:
-# source .venv/bin/activate
-
-pip install -e .
-# or, minimal: pip install -r requirements.txt
-```
-
-Requires Python 3.11+ (tested on 3.13). Core scaffolds — and Polymarket
-discovery + book recording + Pushover notifications — run using only the
-standard library. Optional libs (websockets, requests, pyyaml, lightgbm, etc.)
-are imported lazily and only needed once you wire up the remaining feeds/models.
-
-## 2. Configure `.env`
-
-```bash
-copy .env.example .env      # Windows
-# cp .env.example .env       # macOS/Linux
-```
-
-Edit `.env` and set at minimum:
-- `LOCAL_TIMEZONE`, `EOD_SUMMARY_TIME`
-- Risk limits (`MAX_*`, `PAPER_STARTING_BANKROLL`)
-- Pushover values **if** you want real notifications (`PUSHOVER_ENABLED=true`
-  plus `PUSHOVER_APP_TOKEN` and `PUSHOVER_USER_KEY`); otherwise Noop is used
-
-Leave the safety flags as-is for normal use:
-```
-TRADING_MODE=paper
-LIVE_TRADING_ENABLED=false
-REQUIRE_MANUAL_CONFIRMATION=true
-KILL_SWITCH_ENABLED=true
-```
-
-## 3. Run smoke tests
-
-```bash
-python -m btc5m.cli init                 # validate config + create dirs
-python -m btc5m.cli status               # show resolved config + safety
-python -m btc5m.cli smoke                # dummy candidate end-to-end (paper)
-python -m btc5m.cli check-live-disabled  # confirm live refuses orders
-pytest -q                                # unit/smoke tests
-```
-
-## 4. Discover markets + run record-only mode
-
-Discover the currently-open Polymarket BTC 5-minute markets (read-only, public):
-
-```bash
-python -m btc5m.cli discover-markets --asset BTC --duration 5m
-```
-
-Record real CLOB books (no trading) for a fixed duration:
-
-```bash
-python -m btc5m.cli record --asset BTC --duration 5m --seconds 60 --interval 2
-# or wrapper: python scripts/record_live_data.py
-```
-
-Raw market metadata + raw book payloads land under `data/raw/`; normalized book
-events (best bid/ask, depth, source + receive timestamps, quote age) under
-`data/normalized/`. Recording uses public CLOB REST polling (the streaming WS
-adapter is still a scaffold). These markets are short-lived (5 min), so if none
-are open the command says so precisely rather than faking a recording.
-
-During `record`, for any market whose 5-minute window is currently open, a
-**PROVISIONAL_REFERENCE** window-start line is captured from a BTC feed (default
-Coinbase) and written to `data/normalized/settlement_lines-*.jsonl`. This is a
-proxy, **not** the official Chainlink price. Disable with `--no-line-capture`;
-choose the feed with `--line-source coinbase|binance`.
-
-> Note: Polymarket's book `timestamp` is server-side and can read slightly ahead
-> of the local clock, so `quote_age_ms` may be mildly negative — a real
-> clock-skew signal. The staleness gate only rejects on positive ages.
-
-### Discovery is clock-driven (slug grid)
-
-`discover-markets` enumerates the deterministic 5-minute slug grid around *now*
-and batch-fetches by slug. The slug timestamp is the window **start** in epoch
-seconds (verified live), so the current + upcoming windows are always found — the
-old `order=startDate` query only saw the ~24h-ahead pre-listed batch and missed
-every live window. To see exactly what discovery sees and why:
-
-```bash
-python -m btc5m.cli debug-discovery --asset BTC --duration 5m --lookahead-hours 2
-```
-
-It prints local + Gamma server time, the query routes attempted, the window
-classification (CURRENTLY_IN_WINDOW / UPCOMING_PRE_WINDOW / POST_WINDOW_NOT_RESOLVED
-/ FAR_FUTURE / RESOLVED_OR_CLOSED / STALE_PAST / UNKNOWN_TIMING), accepting-orders
-count (separate from window phase), the current-window candidate with its UI URL,
-include/exclude reasons, and a DISCOVERY_MISMATCH_WITH_UI check.
-
-### Manual override (if discovery ever disagrees with the UI)
-
-```bash
-python -m btc5m.cli inspect-market --url "<paste current Polymarket BTC 5m URL>"
-python -m btc5m.cli inspect-market --slug "btc-updown-5m-<unix_ts>"
-python -m btc5m.cli record-market   --url "<paste URL>" --seconds 300
-python -m btc5m.cli record-market   --slug "btc-updown-5m-<unix_ts>" --seconds 300
-```
-
-`inspect-market` prints metadata, token mapping, status flags, window phase, the
-settlement description, and both order books (read-only — never trades).
-`record-market` persists the raw market payload, raw + normalized books, and a
-provisional in-window line, using the same schema as auto-discovery.
-
-### Continuous rolling collection (preferred for long runs)
-
-```bash
-python -m btc5m.cli collect-continuous --asset BTC --duration 5m \
-    --rediscover-seconds 30 --process-seconds 60 --max-markets 0
-```
-
-One long-lived process: rediscovers on a clock (adds new windows, retires
-resolved/stale), records books for live + upcoming + just-post-window markets,
-captures in-window provisional lines, records underlying, and periodically
-backfills labels + builds features + prints readiness. Stop with Ctrl-C. Prefer
-this over launching multiple overlapping `record` processes (which append to the
-same files concurrently). Stops after `--seconds` (0 = until interrupted).
-
-## 4b. Record underlying BTC feeds
-
-Record Coinbase spot + Binance USDT-M futures (public REST polling, no creds):
-
-```bash
-python -m btc5m.cli record-underlying --seconds 60 --sources coinbase,binance
-```
-
-Raw payloads → `data/raw/underlying_*`; normalized `UnderlyingEvent`s (source,
-symbol, event_type, exchange/recv timestamps, price, size, aggressor side, best
-bid/ask, sizes, spread) → `data/normalized/underlying_*`.
-
-## 4c. Backfill settlement labels
-
-Label completed (expired) recorded windows. Joins the **official** Gamma outcome
-(settlement-grade binary) with **provisional** Coinbase candle prices for the
-numeric line/final/distance:
-
-```bash
-python -m btc5m.cli backfill-settlements --asset BTC --duration 5m   # network on
-python -m btc5m.cli backfill-settlements --no-network                # recorded data only
-python -m btc5m.cli label-status                                     # summarize rows
-```
-
-Rows are written to `data/labels/settlement_labels-*.jsonl` with `reason_code`
-and `label_source_status` (`OFFICIAL` / `PROVISIONAL_REFERENCE` / `MANUAL_REVIEW`
-/ `UNKNOWN`). If the official outcome and the provisional computed label disagree,
-the window is flagged `MANUAL_REVIEW` and both values are kept — never
-overwritten silently. Missing line/final price → explicit `MISSING_*` / `UNKNOWN`.
-
-## 4d. OFFICIAL Chainlink lines (gated)
-
-The OFFICIAL numeric source (Chainlink Data Streams) is **off by default** and
-requires credentials set locally in `.env` (`CHAINLINK_STREAMS_API_KEY`,
-`CHAINLINK_STREAMS_API_SECRET`, `CHAINLINK_BTC_FEED_ID`; env-only, never in chat):
-
-```bash
-python -m btc5m.cli backfill-official-chainlink --asset BTC --duration 5m
-```
-
-Unconfigured, it prints the precise blocker and changes nothing (lines stay
-`PROVISIONAL_REFERENCE`). Configured, it writes `OFFICIAL` line records; re-run
-`backfill-settlements` to use them.
-
-## 4e. Features and the decision loop
-
-```bash
-python -m btc5m.cli build-features --asset BTC --duration 5m   # -> data/features/
-python -m btc5m.cli decide --asset BTC --duration 5m           # gated candidates
-```
-
-`build-features` replays recorded normalized data into **point-in-time, no-
-lookahead** feature rows (contract/time, BTC spot+perp microstructure, Polymarket
-YES/NO book microstructure, staleness/feed-health). `decide` runs the baseline
-model + decision layer and prints decision counts. The baseline is **uncalibrated
-by design**, so decisions stay `WATCH`/`MANUAL_REVIEW` unless you pass
-`--allow-uncalibrated` (demonstration only). `LIVE` is never reachable here.
-
-## 5. Run the paper pipeline (record-only/paper)
-
-One command runs the whole loop and writes the ledger + session summary:
-
-```bash
-python -m btc5m.cli run-paper-pipeline --seconds 600 --sources coinbase,binance
-# offline (reuse already-recorded data, skip network steps):
-python -m btc5m.cli run-paper-pipeline --no-network
-```
-
-Steps: discover → record books (+provisional line) → record underlying →
-backfill-settlements → build-features → decide → **paper ledger** → **session
-summary**. Each step fails safe: if discovery/recording/Chainlink/labels block a
-step, it is reported and the pipeline continues. No real orders are ever placed.
-
-Outputs:
-- `data/paper/paper_ledger-YYYYMMDD.jsonl` — every decision + simulated fill.
-  Fills use the **executable ask** (depth-walked, fees) — never the midpoint.
-- `reports/paper/session_summary-YYYYMMDD.md` — data volumes, decisions by state,
-  fills/rejections, blockers, safety status, next actions.
-
-Gating:
-
-```bash
-python -m btc5m.cli data-readiness --asset BTC --duration 5m   # training/backtest gates
-python -m btc5m.cli paper-backtest  --asset BTC --duration 5m   # blocked until ready
-```
-
-`data-readiness` reports usable/labeled rows and keeps training + backtest
-**blocked** until enough non-leaky OFFICIAL rows exist. `paper-backtest` reports
-the exact missing data when blocked and never fabricates P&L. The legacy
-`scripts/run_paper.py` / `python -m btc5m.cli paper` remain as simple entrypoints.
-
-## 6. Send a test notification
-
-```bash
-python -m btc5m.cli notify-test
-```
-
-- If Pushover is enabled and configured (`PUSHOVER_ENABLED=true` +
-  `PUSHOVER_APP_TOKEN` + `PUSHOVER_USER_KEY`), a test push is sent.
-- If not, the **NoopNotifier** logs the message to console — the system never
-  blocks on missing Pushover credentials, and tokens are never logged.
-
-### Latency-safe notifications & explanations
-
-- Notifications are **async/background**: the decision loop calls `enqueue()`
-  (in-memory, microseconds) and a background worker performs the actual Pushover
-  send. **No notification, explanation, or HTTP call ever runs on the
-  decision/order path.** A full queue, a Pushover timeout, or a send failure can
-  never slow or crash collection.
-- **Explanations are generated *after* a decision**, from the structured reason
-  codes — in the background worker, using offline templates. There is **no
-  LLM/API call** anywhere in (or before) the decision path.
-- **WATCH / REJECTED spam is coalesced/suppressed by default**; only high-signal
-  events (PAPER_CANDIDATE, fills, lock events, collector/source-stale, errors)
-  are pushed promptly. The bounded queue drops low-priority events when full and
-  preserves high-priority ones.
-- Inspect the queue + provider (offline, no network, no secrets):
-
-```bash
-python -m btc5m.cli notification-health
-# Confirm enqueue overhead is negligible vs decision latency:
-python -m btc5m.cli kalshi-latency-benchmark --series KXBTC15M --samples 1000
-```
-
-- Tune via `.env`: `NOTIFICATIONS_ASYNC_ENABLED`, `NOTIFICATIONS_QUEUE_MAXSIZE`,
-  `NOTIFICATIONS_SEND_TIMEOUT_MS`, `NOTIFICATIONS_DROP_LOW_PRIORITY_WHEN_FULL`,
-  `NOTIFICATIONS_COALESCE_WATCH`. Notifications/explanations are operational aids,
-  **not trade logic**; live trading remains disabled.
-
-## 7. Stop processes safely
-
-- Foreground processes: press `Ctrl+C` once and allow graceful shutdown
-  (recorders flush buffers, adapters close sockets).
-- To force-halt trading logic without killing the process, set the kill switch:
-  `KILL_SWITCH_ENABLED=true` (default). The risk manager will reject all orders.
-
-## 8. Diagnose missing credentials
-
-```bash
-python -m btc5m.cli status
-```
-
-Reports, per subsystem, whether required env vars are present. Missing optional
-credentials degrade gracefully (e.g. Pushover → Noop). Missing **live** trading
-credentials simply keep live mode refused — they are never required for paper.
-
-## 9. Confirm live mode is disabled
-
-```bash
+pip install -e ".[models]"      # or minimal: pip install -e .
+copy .env.example .env           # fill in local values; never commit .env
+pytest -q                        # full offline suite must pass
 python -m btc5m.cli check-live-disabled
 ```
 
-The live adapter refuses to submit orders unless **all** of:
-- `TRADING_MODE=live`
-- `LIVE_TRADING_ENABLED=true`
-- kill switch permits trading (`KILL_SWITCH_ENABLED=false` or explicit override)
-- required Polymarket credentials present
-- risk checks pass
-- manual confirmation satisfied (if `REQUIRE_MANUAL_CONFIRMATION=true`)
+Python 3.11+ (tested on 3.13). Optional ML deps (numpy/pandas/sklearn/lightgbm)
+are checked by `python -m btc5m.cli dependency-check`; everything degrades to a
+pure-stdlib fallback if they are absent. Pushover notification creds are
+optional (`PUSHOVER_*` in `.env`); missing creds fall back to a Noop notifier
+(`python -m btc5m.cli notify-test` to verify).
 
-With the shipped defaults, this command must report **LIVE DISABLED**.
-
-## 10. End-of-day summary
-
-```bash
-python scripts/send_eod_summary.py
-# or: python -m btc5m.cli eod
-```
-
-Builds a summary (signals, paper fills, net paper PnL, hit rate, main reject
-reason) and sends via Pushover or Noop fallback at `EOD_SUMMARY_TIME` in
-`LOCAL_TIMEZONE`.
-
-
-<!-- HIRES-MEASUREMENT-LAYER -->
+> The legacy Polymarket BTC 5m sections that used to live here were removed on
+> 2026-06-10 along with the code (git history has both).
 
 ## High-resolution measurement layer (READ-ONLY)
 
