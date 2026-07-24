@@ -3,13 +3,13 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "btc5m"
+name = "kalshi-microstructure-lab"
 version = "0.1.0"
-description = "BTC 5-minute Polymarket binary-contract probability and execution system (live-ready, live-disabled)."
+description = "Leakage-safe ML research lab for short-horizon Kalshi crypto binary markets: purged CV, isotonic calibration, fee-aware executable backtests, and a false-discovery-controlled alpha-discovery engine. Research-only; live execution intentionally disabled."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Proprietary" }
-authors = [{ name = "btc5m" }]
+license = { text = "MIT" }
+authors = [{ name = "Mason Lancellotti", email = "lancellottimason@gmail.com" }]
 
 # Core scaffolds import using only the standard library. These dependencies are
 # needed once real feeds / models are wired up; adapters import them lazily.
@@ -68,6 +68,14 @@ pythonpath = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+# Enforce the correctness-critical rules (pyflakes + syntax): dead imports,
+# undefined/redefined names, f-string and string-format bugs. The E7xx style rules
+# (deliberate compact `a; b` one-liners in this codebase) and F841 (unused locals in
+# a few research paths) are intentionally not enforced.
+select = ["E9", "F"]
+ignore = ["F841"]
 
 [tool.mypy]
 python_version = "3.11"
