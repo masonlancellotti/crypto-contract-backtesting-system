@@ -3909,7 +3909,44 @@ def cmd_kalshi_ade_mine_maker(cfg: AppConfig, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dashboard(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """Serve the keyless research dashboard (FastAPI, default port 8791).
+
+    Hermetic: reads committed sample_data/ + committed report JSONs only. No keys,
+    no network, no live compute. Views: Overview / Calibration / Research Map /
+    Backtest / Replay.
+    """
+    host = getattr(args, "host", None) or "127.0.0.1"
+    port = int(getattr(args, "port", None) or 8791)
+    try:
+        from btc5m.dashboard.app import create_app
+        import uvicorn
+    except Exception as exc:  # noqa: BLE001
+        print("The dashboard needs FastAPI + uvicorn. Install with:")
+        print('  pip install -e ".[dashboard]"')
+        print(f"(import error: {exc})")
+        return 2
+    app = create_app()
+    print(f"Kalshi Microstructure Lab dashboard -> http://{host}:{port}  (Ctrl-C to stop)")
+    print("Keyless + hermetic: serving committed artifacts only.")
+    uvicorn.run(app, host=host, port=port, log_level="warning")
+    return 0
+
+
+def cmd_live_pulse(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """Keyless Kalshi public read of any currently-listed 15-minute crypto series.
+
+    Read-only, no auth, graceful when nothing is listed. Falls back to a committed
+    fixture with --fixture (also the hermetic-test path). Never submits orders.
+    """
+    from btc5m.venues.kalshi.live_pulse import run_live_pulse
+
+    return run_live_pulse(cfg, args)
+
+
 _COMMANDS = {
+    "dashboard": cmd_dashboard,
+    "live-pulse": cmd_live_pulse,
     "init": cmd_init,
     "status": cmd_status,
     "smoke": cmd_smoke,
@@ -4044,6 +4081,10 @@ def main(argv: list[str] | None = None) -> int:
                     "research; live trading is disabled by default and unimplemented.")
     parser.add_argument("command", choices=sorted(_COMMANDS), help="command to run")
     parser.add_argument("--mode", default=None, help="config mode overlay (e.g. paper)")
+    parser.add_argument("--host", default=None, help="dashboard: bind host (default 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=None, help="dashboard: bind port (default 8791)")
+    parser.add_argument("--fixture", action="store_true", dest="fixture",
+                        help="live-pulse: use the committed fixture instead of the network (hermetic)")
     parser.add_argument("--asset", default="BTC", help="asset symbol (default BTC)")
     parser.add_argument("--duration", default="5m", help="contract duration (default 5m)")
     parser.add_argument("--seconds", type=float, default=None,

@@ -1,0 +1,19 @@
+{
+  "market_ticker": "KXBTC15M-26JUN111515-15",
+  "series": "KXBTC15M",
+  "day": "20260611",
+  "window_start_ms": 1781204400000,
+  "close_ms": 1781205300000,
+  "settled_ms": 1781205600000,
+  "reference_start_price": 63403.91,
+  "official_result": "yes",
+  "official_winning_side": "yes",
+  "settlement_reference_source": "CF Benchmarks BRTI (60s average)",
+  "rules_excerpt": "If the simple average of the sixty seconds of CF Benchmarks' BRTI before 3:15 PM EDT on Jun 11, 2026 is at least the simple average of the sixty seconds of CF Benchmarks' BRTI before 3:00 PM EDT on June 11, 2026, then the market resolves to",
+  "sigma_per_sqrt_s": 0.000462161449859748,
+  "frame_ms": 2000,
+  "n_frames": 601,
+  "n_book_snapshots_recorded": 1922,
+  "n_trade_prints_recorded": 16630,
+  "model_note": "p_model is a zero-drift Phi(z) physics baseline from recorded Coinbase spot vs the OFFICIAL start reference (RESEARCH_LEDGER leg 21); p_market is the recorded Kalshi book mid. Recorded data only."
+}

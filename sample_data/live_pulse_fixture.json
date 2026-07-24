@@ -1,0 +1,62 @@
+{
+ "note": "Recorded fixture for `btc5m live-pulse --fixture`. Real recorded top-of-book snapshots (one per series) replayed so hermetic tests and the offline demo never touch the network. Prices in dollars (0-1). NOT live.",
+ "source": "committed sample_data (BTC) + recorded KXETH/KXSOL/KXDOGE 15m snapshots 2026-06-11",
+ "series": [
+  {
+   "series_ticker": "KXBTC15M",
+   "market_ticker": "KXBTC15M-26JUN082015-15",
+   "yes_bid": 0.54,
+   "yes_ask": 0.55,
+   "no_bid": 0.45,
+   "no_ask": 0.46,
+   "yes_bid_size": 1569.57,
+   "yes_ask_size": 92.58,
+   "no_bid_size": 92.58,
+   "no_ask_size": 1569.57,
+   "close_ms": 1780964100000,
+   "as_of_ms": 1780963425851
+  },
+  {
+   "series_ticker": "KXETH15M",
+   "market_ticker": "KXETH15M-26JUN102015-15",
+   "yes_bid": 0.3,
+   "yes_ask": 0.65,
+   "no_bid": 0.35,
+   "no_ask": 0.7,
+   "yes_bid_size": 7.0,
+   "yes_ask_size": 25.0,
+   "no_bid_size": 25.0,
+   "no_ask_size": 7.0,
+   "close_ms": 1781136900000,
+   "as_of_ms": 1781136001521
+  },
+  {
+   "series_ticker": "KXSOL15M",
+   "market_ticker": "KXSOL15M-26JUN102015-15",
+   "yes_bid": 0.39,
+   "yes_ask": 0.67,
+   "no_bid": 0.33,
+   "no_ask": 0.61,
+   "yes_bid_size": 1.0,
+   "yes_ask_size": 80.0,
+   "no_bid_size": 80.0,
+   "no_ask_size": 1.0,
+   "close_ms": 1781136900000,
+   "as_of_ms": 1781136005299
+  },
+  {
+   "series_ticker": "KXDOGE15M",
+   "market_ticker": "KXDOGE15M-26JUN102015-15",
+   "yes_bid": 0.46,
+   "yes_ask": 0.52,
+   "no_bid": 0.48,
+   "no_ask": 0.54,
+   "yes_bid_size": 20.0,
+   "yes_ask_size": 80.0,
+   "no_bid_size": 80.0,
+   "no_ask_size": 20.0,
+   "close_ms": 1781136900000,
+   "as_of_ms": 1781136004565
+  }
+ ]
+}
