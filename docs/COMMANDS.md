@@ -171,8 +171,6 @@ $PY -m pytest -q                                               # full offline su
   collector's PowerShell window and restart at a natural 15-minute boundary.
 
 
-<!-- HIRES-MEASUREMENT-LAYER -->
-
 ## High-resolution measurement layer (READ-ONLY; no orders/paper/live)
 
 Sub-second Coinbase/Binance public WebSocket + fast Kalshi active-book REST polling, for
@@ -205,9 +203,7 @@ Outputs: `data/raw/hires/`, `data/normalized/hires/` (`hires_coinbase_ticker-*`,
 data is sufficient and the v2 study is implemented (the ~4s-cadence v1 runs without `--hires`).
 
 
-<!-- HIRES-HARDENING-1.5 -->
-
-## High-res recorder hardening (Prompt 1.5; READ-ONLY)
+## High-res recorder hardening (Recorder hardening; READ-ONLY)
 
 Threaded bounded writer (LOW-priority raw/aggTrade drop first; Kalshi active-book + joined
 NEVER dropped), 15-min rotation + gzip of closed segments + retention. Measurement only.
@@ -229,8 +225,6 @@ NEVER dropped), 15-min rotation + gzip of closed segments + retention. Measureme
 `kalshi-hires-status` now reports per-stream sizes/rates, last-session queue depth/drops/writer
 lag, and `reprice_lag_v2_ready`. Files segment under `data/{raw,normalized,features}/hires/YYYYMMDD/`.
 
-
-<!-- KALSHI-WS-FEASIBILITY -->
 
 ## Kalshi market-data WebSocket feasibility (READ-ONLY; no orders)
 

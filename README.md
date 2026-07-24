@@ -1,74 +1,218 @@
-# btc5m — Kalshi BTC 15-Minute Up/Down Probability & Execution Research System
+# Kalshi Microstructure Lab
 
-A record-only / paper-first system for short-term BTC binary prediction-market
-contracts. Active venue: **Kalshi BTC 15m Up/Down (series KXBTC15M)**. It
-estimates the calibrated settlement probability P(YES resolves 1 at window
-close), prices contracts against executable bids/asks net of fees, and gates
-every decision behind freshness, depth, calibration, uncertainty, and risk
-checks. **Live trading is disabled everywhere by default** — the live adapter
-refuses every order unconditionally in this build.
+A quant-research lab for short-horizon binary prediction markets. It ingests
+Kalshi crypto **15-minute up/down** contracts (BTC primary, plus ETH/SOL/DOGE/XRP)
+and their underlying spot/perp microstructure, builds **leakage-safe** point-in-time
+features, and runs a disciplined ML pipeline — purged/embargoed cross-validation,
+isotonic/Platt calibration, and **fee-aware executable backtests** — on top of an
+automated **alpha-discovery engine** with false-discovery control (Deflated Sharpe
+Ratio, PBO/CSCV, a sealed holdout vault). Across **38 strategy hypotheses** tested
+against millions of real trade prints, it rigorously demonstrates that these markets
+are **efficient after costs**. The honest negative result is the product.
 
-> **Start here:** `PROJECT_STATE.md` (current state) and `RESEARCH_LEDGER.md`
-> (every hypothesis tested and its verdict). Operations: `RUNBOOK.md`.
-> All commands: `COMMANDS.md`. Why nothing can submit: `LIVE_SAFETY.md`.
+> **Research only. No live trading.** The execution layer is intentionally disabled
+> and unimplemented (see [below](#execution-layer-intentionally-disabled)). Nothing
+> in this build can submit or cancel a real order.
 
-## Honest status (2026-06-10)
+> **Names:** the distribution is `kalshi-microstructure-lab`; the import package and
+> CLI keep the stable short name `btc5m`. The repository folder can be renamed at
+> publish time.
 
-- **Pipeline:** healthy. 770 OFFICIAL-labeled, feature-backed 15m windows;
-  continuous collector records Kalshi books + Coinbase/Binance underlying
-  microstructure (+ optional Deribit vol) into point-in-time, no-lookahead
-  feature rows; ~600 offline tests pass.
-- **Edge:** none demonstrated yet. KXBTC15M is tight (median spread ~1c, taker
-  fee ~1.5c) and the market price is the best-calibrated forecaster measured.
-  Direct models, residual-over-market models, stale-quote sniping, and the
-  conservative lower bound on maker entries all fail to clear costs
-  out-of-sample. The ledger documents each verdict and the three directions
-  still open (sub-second WS microstructure, deep-favorite YES bias,
-  cross-venue).
-- **Promoted artifacts (paper-only):** a freshly trained + isotonic-calibrated
-  pair (held-out ECE 0.026, overfit risk low) is promoted via a SHA-pinned
-  manifest for shadow/paper experiments. Promotion is not a profitability claim.
+## Headline findings
 
-## Quick start
+| Question | Method | Result |
+|---|---|---|
+| Can any model beat the market's implied probability? | Market-implied vs distance/time/vol and microstructure logistic baselines, window-level ECE | **No.** Market-implied is the best-calibrated forecaster measured: distinct-window **ECE ≈ 0.020**, vs **0.03+** for every trained model. |
+| Do taker strategies clear costs? | Direct, recalibrated, and residual-over-market models; stale-quote / reprice-lag event studies; executable ASK backtests | **No.** Every taker strategy fails to clear the ≈2.5c round cost (≈1c spread + ≈1.5c fee) out-of-sample. |
+| Does market-making capture the spread? | Real-fill maker studies on 3.2M backfilled trade prints; cancel/requote latency sweeps | **No.** Static quoting is ≈−3.15c per quote; fills are adversely selected; faster quoting only gets you adversely selected faster. |
+| Does automated search find a surviving edge? | 38-hypothesis alpha-discovery engine, deflated significance | **One cell survives the gauntlet** (deep-favorite maker, **DSR 0.998, PBO 0.00**, persists on the sealed holdout) — but it is short-vol favorite-capture (≈2–4c collected against a **−96c single-loss tail**). DSR is blind to the unrealized left tail, so it is **not bankable** (see caveat below). |
+| Is the market inefficient in any regime? | 21 regime cells (vol/spread/depth/volume/time-of-day/IV), multi-feature combination mine | **No.** Every regime cell deflates to DSR ≈ 0. The multi-feature combination reproduces the market price almost exactly — the price sits at the information frontier of the whole feature library. |
+
+Of the 38 legs, the large majority are **concluded-negative after costs**; a handful
+are **open/watch** pending more forward data (e.g. ETH cross-coin residual, the
+deep-favorite forward check), and several are **infrastructure** (measurement/safety
+capability, not edge claims). The full, per-leg record with reproduction commands is
+in [`docs/RESEARCH_LEDGER.md`](docs/RESEARCH_LEDGER.md).
+
+**The one-surviving-cell caveat (important):** the deep-favorite maker cell clears the
+statistical gauntlet because a 100%-win small sample contains no realized tail, not
+because the tail is absent — buying a 96c favorite risks ≈96c to make ≈4c. The
+Deflated Sharpe Ratio does not see that asymmetry, and the parameter-plateau/payoff
+gate rejects the candidate. It is a real, out-of-sample-persistent pattern and a
+penny-in-front-of-a-steamroller, not a tradeable edge.
+
+## Why the methodology is the point
+
+- **No look-ahead, by construction.** Features are point-in-time (`as_of_ms < close_ms`);
+  training uses OFFICIAL settlement labels only; orphan labels (result but no feature
+  rows) are excluded and can never inflate the gate.
+- **Window-level purged CV with embargo.** Splits are over distinct, non-overlapping
+  15-minute windows with a mandatory purge + embargo between segments — never row-level.
+- **Executable prices, always.** Backtests fill at the executable ASK (the complement of
+  the opposite side's best bid), never the midpoint, and always subtract fees, depth, and
+  staleness. A hard up/down class is a diagnostic and never trades.
+- **Calibration is mandatory.** Isotonic (PAV) / Platt fit on held-out windows; models are
+  stamped `NON_TRADABLE_DIAGNOSTIC_ONLY` until they pass the gate *and* a calibrator.
+- **False-discovery control.** The alpha-discovery engine scores per-window, deflates the
+  Sharpe by the cumulative trial budget (Deflated Sharpe Ratio), estimates the Probability
+  of Backtest Overfitting via CSCV, requires a parameter plateau and cross-asset
+  replication, and validates survivors exactly once against a SHA-pinned sealed holdout.
+  It self-checks: it rejects the in-sample best of pure noise and accepts a planted edge.
+  See [`docs/ALPHA_DISCOVERY.md`](docs/ALPHA_DISCOVERY.md).
+
+## Architecture
+
+```
+collectors (REST) ─► raw/normalized JSONL ─► point-in-time v3 feature rows ─► OFFICIAL labels
+   │                                                                              │
+   ├─ source-health / readiness / label-audit (orphans excluded)                 │
+   ▼                                                                              ▼
+model dataset (feature-backed official only, no look-ahead) ◄── purge/embargo by 15m window
+   ▼
+baselines (market-implied · distance/time/vol · microstructure)   [pure-stdlib; numpy/sklearn optional]
+   ▼
+calibration (isotonic/Platt, held-out) ─► executable backtest (ask prices, fees, depth) ─► threshold sweep
+   ▼
+alpha-discovery engine (feature factory → screen → search → DSR/PBO gauntlet → sealed holdout)
+   ▼
+paper-candidate policy (gated) ─► live-readiness scaffolding (DRY-RUN ONLY; refuses)
+```
+
+The core runs on the **standard library + PyYAML + python-dotenv**; numpy / pandas /
+scikit-learn / lightgbm are optional and degrade gracefully to pure-Python models.
+Full map: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Quickstart
 
 ```powershell
-python -m venv .venv ; .\.venv\Scripts\Activate.ps1
-pip install -e ".[models]"
-copy .env.example .env
-pytest -q                                            # offline suite
-python -m btc5m.cli check-live-disabled              # safety proof
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1              # Windows; use `source .venv/bin/activate` on POSIX
+pip install -e ".[models,dev]"            # or `pip install -e .` for the stdlib-only core
+copy .env.example .env                    # optional; all research paths work with the defaults
 
-# collect (read-only; Ctrl-C safe)
-.\scripts\collect_kalshi_continuous.ps1
-
-# daily visibility (read-only)
-python -m btc5m.cli kalshi-ops-status --series KXBTC15M
-python -m btc5m.cli kalshi-data-readiness
-python -m btc5m.cli kalshi-doctor
+python -m btc5m.cli check-live-disabled   # safety proof: the live adapter refuses
+python -m pytest -q                        # 677 offline tests, no keys / no network
 ```
 
-## Layout
+## Zero-key demo (no API keys, no network)
+
+A small curated sample (`sample_data/`, ≈1.6 MB — one BTC day: 95 OFFICIAL-labeled
+15-minute windows) ships in the repo so an outside reviewer can run the full research
+pipeline offline. Point `DATA_DIR` at the sample and run the calibration + executable
+backtest chain (everything is correctly stamped `NON_TRADABLE_DIAGNOSTIC_ONLY` — the
+sample is below the 150-window training gate by design):
+
+```powershell
+$env:DATA_DIR    = "$PWD\sample_data"
+$env:REPORTS_DIR = "$PWD\sample_reports"      # any writable output dir
+$PY = ".\.venv\Scripts\python.exe"
+
+& $PY -m btc5m.cli kalshi-build-model-dataset --series KXBTC15M --diagnostic-ok
+& $PY -m btc5m.cli kalshi-data-readiness      --series KXBTC15M
+& $PY -m btc5m.cli kalshi-train-baselines     --series KXBTC15M --diagnostic-only
+& $PY -m btc5m.cli kalshi-calibration-report  --series KXBTC15M --diagnostic-only
+& $PY -m btc5m.cli kalshi-backtest-baselines  --series KXBTC15M --diagnostic-only
+```
+
+Expected: `gate_windows: 95` (backtest gate of 60 met, training gate of 150 not — as
+intended); the calibration report shows isotonic improving reliability
+(**ECE 0.147 → 0.117** on this sample); the executable backtest shows every baseline
+**net-negative after fees** (`distance_time_vol ≈ −2.06c`, `microstructure ≈ −3.61c`,
+market-implied trades 0 by construction) — the no-edge result, in miniature. Reference
+copies of the generated reports are committed under `sample_data/expected/`. Regenerated
+models/datasets land in `sample_data/models/` and are gitignored.
+
+## Configuration
+
+All safety-relevant defaults are safe; research paths need no credentials. Key variables
+(`.env.example` documents the full surface):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TRADING_MODE` | `paper` | `offline` / `record-only` / `backtest` / `paper` (never `live` in this build) |
+| `LIVE_TRADING_ENABLED` | `false` | Hard-off; live is unimplemented regardless |
+| `KILL_SWITCH_ENABLED` | `true` | Rejects all orders (safe default) |
+| `KALSHI_SERIES_TICKER` | `KXBTC15M` | Active series |
+| `KALSHI_KEY_ID` / `KALSHI_PRIVATE_KEY_PATH` | empty | Optional; only for the read-only authenticated market-data WebSocket. Public REST needs none. The RSA key stays in a gitignored local file; it is never read or printed. |
+| `DATA_DIR` / `REPORTS_DIR` | `./data` / `./reports` | Data and report roots (the demo overrides these) |
+| `KALSHI_FEE_RATE` | `0.07` | Fee assumption (ASSUMED until verified against the official schedule) |
+| `DERIBIT_ENABLED` | `false` | Optional volatility/options context source |
+
+## Testing
+
+```powershell
+python -m pytest -q          # full offline suite: 677 tests, no keys, no network
+```
+
+The suite is fully offline and deterministic (≈1–2 minutes locally). CI runs `ruff`
+plus a representative fast subset on every push; the **complete** suite runs in a
+separate nightly workflow (`.github/workflows/nightly.yml`).
+
+## Project structure
 
 ```
-src/btc5m/venues/kalshi/   the active system (client, books, features, collector,
-                           dataset/training/calibration/backtest, edge policy,
-                           paper promotion + experiments, lock/lifecycle,
-                           live-readiness dry-run, ops, research studies, hires/)
-src/btc5m/{data,labels,models,execution,notifications}/   shared core
-tests/                     offline pytest suite
-data/                      JSONL records, labels, features, models (gitignored)
-reports/                   generated markdown/CSV reports (mostly gitignored)
-docs/archive/              historical state/audit documents
+src/btc5m/
+  cli.py                 ~100 subcommands (grouped below); shared arg parsing
+  config.py, schemas.py, timeutils.py   shared core
+  venues/kalshi/         the active system: client, orderbook, features, feature_source,
+                         collector, readiness, labels_audit, model_dataset, splits,
+                         train/calibrate/backtest, policy + edge_policy + uncertainty,
+                         paper promotion/runtime/experiment, lock + lifecycle,
+                         live_readiness (dry-run only), ops, maker_entry,
+                         reprice_lag(+hires), residual_alpha, hires/ recorder
+  discovery/             alpha-discovery engine (gauntlet, CPCV, holdout vault, registry,
+                         feature factory, screen, search, engine)
+  models/                baseline, pure_ml (stdlib ML), sklearn/lightgbm challengers
+  data/ labels/ execution/ notifications/   feeds, labeling, risk + refusal adapter, alerts
+tests/                   677 offline tests
+sample_data/             committed zero-key demo sample (+ expected reports)
+docs/                    ARCHITECTURE, MODEL_PIPELINE, ALPHA_DISCOVERY, RESEARCH_LEDGER,
+                         RUNBOOK, COMMANDS, archive/
+data/ reports/           local corpora (gitignored where large)
 ```
 
-The original Polymarket BTC 5m leg was removed on 2026-06-10 after the venue
-was parked; it is recoverable from git history if cross-venue work resumes.
+CLI command groups (`python -m btc5m.cli <command>`; full cheat sheet in
+[`docs/COMMANDS.md`](docs/COMMANDS.md), operations in [`docs/RUNBOOK.md`](docs/RUNBOOK.md)):
 
-## Safety invariants
+- **Collection** — `kalshi-collect-continuous`, `kalshi-record`, `record-underlying`, `record-deribit`, `kalshi-backfill-settlements`, `kalshi-backfill-trades`
+- **Readiness & data** — `kalshi-data-readiness`, `kalshi-label-audit`, `kalshi-build-model-dataset`, `kalshi-split-report`, `source-health`
+- **Modeling** — `kalshi-train-baselines`, `kalshi-train-model`, `kalshi-calibration-report`, `kalshi-calibrate-model`
+- **Backtesting** — `kalshi-backtest-baselines`, `kalshi-backtest-model`, `kalshi-threshold-sweep`, `kalshi-reprice-lag-report`
+- **Alpha discovery** — `kalshi-ade-selfcheck`, `kalshi-ade-vault`, `kalshi-ade-mine[-pooled|-maker|-crosscoin|-conditional|-combo]`
+- **Paper policy (never live)** — `kalshi-policy-report`, `kalshi-edge-policy-report`, `kalshi-promote-paper-artifacts`, `kalshi-paper-experiment-*`
+- **Ops / monitoring (read-only)** — `kalshi-ops-status`, `kalshi-gate-progress`, `kalshi-model-health`, `kalshi-doctor`, `kalshi-eod-summary`
+- **Safety** — `check-live-disabled`, `kalshi-safety-status`, `kalshi-live-blockers`
 
-Executable prices only (never midpoint) · fees always subtracted · OFFICIAL
-labels only, purged/embargoed windows, no lookahead · staged artifacts inactive
-until explicitly promoted (SHA-pinned, audited) · stale data can never become a
-candidate · uncertainty buffers are measurements, never deleted ·
-`live_submission_allowed` hard-False everywhere · kill switch + manual
-confirmation + paper evidence + risk gates all required for any future live step.
+## Execution layer intentionally disabled
+
+Live order submission is disabled by default and **unimplemented** — this is a
+deliberate design stance, not a missing feature:
+
+- The live Kalshi execution adapter's `submit()`/`cancel()` always return a structured
+  refusal and issue **no HTTP** (a hard `_http_mutation` guard; tested with a `urlopen`
+  call count of 0 under default config).
+- `live_submission_allowed` is a hard-`False` property on every policy decision, lock
+  decision, readiness config, and order intent. There is no `LIVE_CANDIDATE`,
+  `SUBMITTED`, or `LIVE_FILLED` state.
+- A paper candidate cannot even fire without a trained + non-diagnostic + calibrated +
+  backtested model passing every freshness/depth/edge/risk gate — and the research
+  concluded there is no such edge.
+
+The full safety model is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#safety-model-live-trading-disabled-and-unimplemented).
+
+## Roadmap & limitations (honest)
+
+- **No demonstrated edge** — and the ledger explains why chasing more of the same data is
+  a dead end. The open directions require *new inputs*: sub-second WebSocket book data,
+  forward verification of the deep-favorite cell, or a structural change (cross-venue,
+  different series).
+- **62 GB of raw/normalized data is gitignored**, so a clean clone reproduces the
+  *pipeline* (via the committed `sample_data/` demo) but not the full 3.2M-print corpus.
+- **Fees are an assumption** (`KALSHI_FEE_RATE`, stamped `ASSUMED`) until verified against
+  the official schedule.
+- **Multi-asset series (ETH/SOL/DOGE/XRP)** are wired and collecting; comparative
+  efficiency analysis is ongoing.
+
+## License
+
+MIT © 2026 Mason Lancellotti. See [`LICENSE`](LICENSE).

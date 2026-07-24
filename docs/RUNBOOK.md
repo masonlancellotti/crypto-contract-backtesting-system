@@ -228,7 +228,7 @@ fees** (config; ASSUMED until verified) are subtracted from edge. Labels come fr
 Kalshi's OFFICIAL `result`; a BTC proxy is only ever PROVISIONAL_REFERENCE.
 Outputs: `data/raw|normalized/kalshi_*`, `data/labels/kalshi_settlement_labels-*`,
 `data/features/kalshi_feature_rows-*`, `data/paper/kalshi_paper_ledger-*`,
-`reports/paper/kalshi_session_summary-*`. See `PROJECT_STATE.md` and `RESEARCH_LEDGER.md`.
+`reports/paper/kalshi_session_summary-*`. See the README and `RESEARCH_LEDGER.md`.
 
 ---
 
@@ -275,9 +275,7 @@ with immediate local `recv_ms` timestamps, plus optional point-in-time joined sn
 Commands: `kalshi-hires-smoke` / `kalshi-hires-record` / `kalshi-hires-status` (see COMMANDS.md).
 
 
-<!-- HIRES-HARDENING-1.5 -->
-
-## High-res recorder hardening (Prompt 1.5)
+## High-res recorder hardening 
 
 The high-res recorder is hardened for long unattended runs (still READ-ONLY measurement; no paper/live/orders):
 
@@ -298,8 +296,6 @@ The high-res recorder is hardened for long unattended runs (still READ-ONLY meas
   sub-second hot path; its staleness never blocks the high-res collector. **Polymarket cross-venue
   remains out of scope.** No paper/live; `live_submission_allowed=false`.
 
-
-<!-- KALSHI-WS-FEASIBILITY -->
 
 ## Kalshi market-data WebSocket feasibility (READ-ONLY)
 
