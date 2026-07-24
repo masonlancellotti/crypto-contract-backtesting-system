@@ -11,7 +11,6 @@ import json
 from btc5m.cli import _COMMANDS, main
 from btc5m.config import load_config
 from btc5m.execution.live_kalshi import LiveKalshiExecutionAdapter
-from btc5m.venues.kalshi import live_readiness as lrmod
 from btc5m.venues.kalshi.live_readiness import (
     NoConfirmationProvider, assess_live_readiness, credential_status,
     kalshi_private_read_preflight, write_audit_log,

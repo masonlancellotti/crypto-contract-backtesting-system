@@ -13,7 +13,6 @@ from __future__ import annotations
 import csv
 import json
 from datetime import datetime, timezone
-from typing import Optional
 
 from .calibrate import Calibrator, latest_calibrator_path, load_calibrator
 from .executable_backtest import (

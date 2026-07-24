@@ -14,7 +14,7 @@ never produce a trade (decisions use the calibrated probability + executable EV)
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 
 from .fees import KalshiFeeModel
 from .paper import MANUAL_REVIEW, PAPER_CANDIDATE, REJECTED, WATCH

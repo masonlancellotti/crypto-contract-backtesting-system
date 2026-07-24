@@ -34,7 +34,7 @@ from .calibrate import latest_staged_calibrator_path, load_calibrator
 from .executable_backtest import latest_staged_model_artifact_path
 from .feature_schema import MODEL_SCHEMA_VERSION
 from .model_artifacts import (
-    DIAGNOSTIC_ONLY, NON_TRADABLE, PROMOTED_FOR_PAPER, TRADABLE, load_artifact,
+    NON_TRADABLE, PROMOTED_FOR_PAPER, load_artifact,
 )
 
 MANIFEST_NAME = "kalshi_paper_promotion_manifest.json"

@@ -16,7 +16,7 @@ from typing import Optional
 
 from ...notifications import build_notifier
 from .calibrate import Calibrator, latest_calibrator_path, load_calibrator
-from .executable_backtest import predict_from_artifact, settle_trade
+from .executable_backtest import predict_from_artifact
 from .fees import KalshiFeeModel
 from .lock_profit import (
     LOCK_FULL, LOCK_PARTIAL, RIDE, KalshiPositionLot, KalshiPositionState, LockConfig,

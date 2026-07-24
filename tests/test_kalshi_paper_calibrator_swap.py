@@ -10,7 +10,6 @@ import json
 import pickle
 from pathlib import Path
 
-import pytest
 
 from btc5m.config import load_config
 from btc5m.venues.kalshi import paper_calibrator_swap as sw

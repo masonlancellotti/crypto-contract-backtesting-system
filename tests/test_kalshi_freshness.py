@@ -10,7 +10,6 @@ Nothing trades; live stays disabled.
 import json
 from collections import Counter
 
-import pytest
 
 from btc5m.config import load_config
 

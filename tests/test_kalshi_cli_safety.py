@@ -3,7 +3,6 @@ and an offline paper-pipeline run. All offline; network fully mocked."""
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 
 from btc5m.cli import _COMMANDS, main
 from btc5m.config import load_config

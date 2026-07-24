@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from btc5m.config import load_config
-from btc5m.venues.kalshi.client import MarketPhase, select_collection_targets
+from btc5m.venues.kalshi.client import MarketPhase
 from btc5m.venues.kalshi.hires import (
     HiResConfig, build_sources, run_ws_feasibility, ws_book_available, auth_headers,
     subscribe_message, KalshiBook, normalize_ws_book, KalshiWSBookSource, READ_ONLY_BANNER,

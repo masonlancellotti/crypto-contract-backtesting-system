@@ -7,8 +7,6 @@ retention, Binance aggTrade enable/sample/rate-cap, status (sizes/rates/queue/v2
 the smoke runner with mocked sources, safe defaults, and check-live-disabled. No network.
 """
 
-import glob
-import gzip
 import json
 import os
 import time
@@ -19,7 +17,7 @@ from btc5m.venues.kalshi.client import MarketPhase, select_collection_targets
 from btc5m.venues.kalshi.hires import (
     HiResConfig, HiResWriter, PriorityDropQueue, BinanceWSSource, stream_priority,
     coinbase_ticker_event, binance_book_ticker_event, binance_trade_event,
-    run_hires_compact, run_hires_smoke, run_hires_status, reprice_lag_v2_readiness,
+    run_hires_compact, run_hires_smoke, run_hires_status,
 )
 from btc5m.venues.kalshi.hires import collector as cm
 from btc5m.venues.kalshi.hires import sources as sm

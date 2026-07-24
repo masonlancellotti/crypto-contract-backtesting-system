@@ -34,11 +34,11 @@ import glob
 import json
 import math
 import os
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 from ...models.baseline import BaselineInputs, normal_prob_yes
 from ...schemas import Comparison
@@ -926,7 +926,7 @@ def _render_md(series: str, summary: dict, study: StudyConfig, deribit_present: 
         "",
         "## Data scanned",
         f"- files: {len(s['files'])}  days: {', '.join(s['days'])}",
-        f"- shock signals: spot returns 5/15/30/60s, vol-normalized, spot-perp basis jump, Binance OFI impulse "
+        "- shock signals: spot returns 5/15/30/60s, vol-normalized, spot-perp basis jump, Binance OFI impulse "
         "(per-day p95), near-line; opportunity proxy: driftless-lognormal baseline P(YES) vs executable ask.",
         f"- study config: min_depth={study.min_depth}, min_seconds_to_close={study.min_seconds_to_close}, "
         f"max_book_age_ms={study.max_book_age_ms}, conservative_buffer={study.conservative_buffer_cents}c "

@@ -36,7 +36,6 @@ manifest mutation. ``live_submission_allowed`` is always False.
 from __future__ import annotations
 
 import csv
-import json
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional

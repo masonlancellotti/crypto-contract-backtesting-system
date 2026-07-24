@@ -9,7 +9,6 @@ policy and is never live. Nothing trades; live stays disabled.
 
 import json
 
-import pytest
 
 from btc5m.config import load_config
 

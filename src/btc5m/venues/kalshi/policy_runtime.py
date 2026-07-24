@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Optional
 
 from ...notifications import build_notifier
 from .calibrate import Calibrator, latest_calibrator_path, load_calibrator
@@ -21,9 +20,9 @@ from .executable_backtest import (
     latest_model_artifact_path, predict_from_artifact, settle_trade,
 )
 from .fees import KalshiFeeModel
-from .model_artifacts import NON_TRADABLE, is_tradable, load_artifact
+from .model_artifacts import NON_TRADABLE, load_artifact
 from .model_dataset import build_model_dataset
-from .paper import MANUAL_REVIEW, PAPER_CANDIDATE, REJECTED, WATCH
+from .paper import PAPER_CANDIDATE, REJECTED
 from .policy import (
     BacktestValidity, CalibrationValidity, ExecutablePrices, ModelValidity, PolicyInput,
     SourceFreshness, evaluate_policy,

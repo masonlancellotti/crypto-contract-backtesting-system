@@ -13,10 +13,9 @@ import csv
 import json
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Optional
 
 from .edge_policy import EdgePolicyConfig, EdgeInputs, evaluate_edge
-from .executable_backtest import _prob_for, market_implied_probs, settle_trade
+from .executable_backtest import _prob_for, settle_trade
 from .fees import KalshiFeeModel
 from .trade_frequency_runtime import build_eval_set
 from .uncertainty import build_calibration_buckets

@@ -7,7 +7,6 @@ window splits, and that nothing emits PAPER_CANDIDATE or a live order.
 
 import json
 
-import pytest
 
 from btc5m.config import load_config
 from btc5m.venues.kalshi import calibrate, calibration_report as crep

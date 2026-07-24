@@ -27,7 +27,7 @@ import math
 import os
 import statistics
 from collections import Counter, defaultdict, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -788,7 +788,7 @@ def _write_reports(config, comp: dict, sh: dict, cfg: V2Config, grid: list[dict]
     # markdown
     ans = _answers(comp, sh, cfg)
     verdict, _ = _verdict(sh)
-    L = [f"# Kalshi KXBTC15M - repricing-lag **v2 (high-res)** study", "",
+    L = ["# Kalshi KXBTC15M - repricing-lag **v2 (high-res)** study", "",
          f"_Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC. HIGH-RES v2 on "
          "`kalshi_hires_joined_snapshots`. READ-ONLY research; no paper/live/orders/promotion. Settlement "
          "labels used for EVALUATION only; the underlying-implied PROXY is diagnostic, not truth._", "",

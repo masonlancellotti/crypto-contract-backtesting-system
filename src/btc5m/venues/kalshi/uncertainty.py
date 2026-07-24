@@ -13,7 +13,6 @@ missing interval is reported (not silently ignored).
 from __future__ import annotations
 
 import math
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Optional
 

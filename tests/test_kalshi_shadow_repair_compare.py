@@ -12,7 +12,7 @@ import pytest
 from btc5m.config import load_config
 from btc5m.venues.kalshi.edge_policy import EdgePolicyConfig
 from btc5m.venues.kalshi.fees import KalshiFeeModel
-from btc5m.venues.kalshi.probability_repair import blend, market_implied_yes
+from btc5m.venues.kalshi.probability_repair import blend
 from btc5m.venues.kalshi import shadow_repair_compare as sc
 
 ECFG = EdgePolicyConfig()

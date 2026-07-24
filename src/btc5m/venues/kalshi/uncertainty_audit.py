@@ -39,7 +39,7 @@ from typing import Optional
 
 from .edge_policy import EdgePolicyConfig, EdgeInputs, evaluate_edge
 from .fees import KalshiFeeModel
-from .uncertainty import CalibrationBucket, wilson_interval
+from .uncertainty import wilson_interval
 
 # Cohort selectors (which ledger rows to audit).
 COHORT_EDGE_BLOCKED = "edge_blocked"      # PAPER_CANDIDATE_OK + edge-policy blocked (the 137)

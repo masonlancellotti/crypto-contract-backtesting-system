@@ -11,7 +11,7 @@ from btc5m.venues.kalshi.model_artifacts import (
     NON_TRADABLE, TRADABLE, build_artifact, is_tradable, load_artifact, save_artifact,
 )
 from btc5m.venues.kalshi.model_dataset import build_model_dataset
-from btc5m.venues.kalshi.splits import chronological_split, group_windows, split_indices
+from btc5m.venues.kalshi.splits import chronological_split, split_indices
 from btc5m.venues.kalshi.train_baselines import run_train_baselines, run_train_model
 
 WIN = 15 * 60 * 1000

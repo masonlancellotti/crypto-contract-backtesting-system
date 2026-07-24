@@ -530,7 +530,7 @@ def _finish(config, result: dict) -> dict:
     p = d / f"kalshi_ws_feasibility_{stamp}.md"
     cred = result["credentials"]
     ws_api = result.get("websockets_connect") or {}
-    L = [f"# Kalshi market-data WebSocket feasibility (READ-ONLY)", "",
+    L = ["# Kalshi market-data WebSocket feasibility (READ-ONLY)", "",
          f"_{READ_ONLY_BANNER} Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC. "
          "No orders, no paper/live, no promotion. Secrets are never printed (presence/booleans only)._", "",
          f"- series: {result['series']}  ws_url: {result.get('ws_url')}",

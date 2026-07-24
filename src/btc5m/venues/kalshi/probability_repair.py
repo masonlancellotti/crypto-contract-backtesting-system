@@ -27,7 +27,6 @@ from __future__ import annotations
 import csv
 import json
 import pickle
-from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -37,7 +36,7 @@ from .calibrate import Calibrator, build_calibrator_artifact, fit_calibrator, sa
 from .calibration_report import calibration_summary
 from .edge_policy import EdgeInputs, EdgePolicyConfig, evaluate_edge
 from .executable_backtest import (
-    BacktestParams, _attach, market_implied_probs, predict_from_artifact, simulate_backtest,
+    BacktestParams, _attach, predict_from_artifact, simulate_backtest,
 )
 from .feature_schema import MICROSTRUCTURE_FEATURES, feature_vector
 from .fees import KalshiFeeModel
@@ -665,7 +664,7 @@ def _write_shrink_reports(config, ctx: dict, sweep: dict, stability: dict) -> di
         "", "## alpha sweep by base (ECE window; lower=better). alpha=0 is pure market, alpha=1 is pure model.",
     ]
     for base_name, rows_alpha in sweep["grid"].items():
-        lines += [f"", f"### base = {base_name}",
+        lines += ["", f"### base = {base_name}",
                   "| alpha | brier | log_loss | ECE(row) | ECE(window) | YES_overpred(c) |",
                   "|---|---|---|---|---|---|"]
         for r in rows_alpha:

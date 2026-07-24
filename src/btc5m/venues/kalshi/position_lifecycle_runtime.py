@@ -25,7 +25,6 @@ from .lock_runtime import (
 from .position_lifecycle import (
     LOCK_WITH_OPPOSITE_LEG, PARTIAL_LOCK, RIDE, RISK_EXIT, SELL_PARTIAL, SELL_SAME_LEG,
     KalshiPositionState, LifecycleConfig, LifecycleInput, evaluate_lifecycle,
-    same_leg_exit_value,
 )
 
 # Action -> ledger event type (paper-only; dry-run emits INTENT/EVAL, never a fill).

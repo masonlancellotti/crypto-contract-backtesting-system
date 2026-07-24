@@ -22,17 +22,17 @@ import csv
 import json
 import math
 import pickle
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from .edge_policy import EdgeInputs, EdgePolicyConfig, evaluate_edge
-from .executable_backtest import BacktestParams, _attach, market_implied_probs, simulate_backtest
+from .executable_backtest import BacktestParams, _attach, simulate_backtest
 from .feature_schema import SCHEMA, feature_vector, training_feature_names
 from .fees import KalshiFeeModel
 from .model_artifacts import (
-    DIAGNOSTIC_ONLY, STAGED_NON_PROMOTED, staged_models_dir, tradable_status_for,
+    DIAGNOSTIC_ONLY, staged_models_dir, tradable_status_for,
 )
 from .model_dataset import build_model_dataset
 from .paper_promotion import load_active_promotion, sha256_file

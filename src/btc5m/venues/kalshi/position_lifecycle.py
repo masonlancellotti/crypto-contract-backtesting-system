@@ -24,9 +24,7 @@ from typing import Optional
 
 from .fees import KalshiFeeModel
 from .lock_profit import (
-    ALREADY_FULLY_LOCKED as LOCK_ALREADY_FULLY_LOCKED,
-    LOCK_FULL, LOCK_PARTIAL, NO_POSITION as LOCK_NO_POSITION, RIDE as LOCK_RIDE,
-    KalshiPositionLot, KalshiPositionState, LockConfig, decimal_to_cents, evaluate_lock,
+    LOCK_FULL, LOCK_PARTIAL, KalshiPositionLot, KalshiPositionState, LockConfig, decimal_to_cents, evaluate_lock,
 )
 from .prices import format_price_cents
 
