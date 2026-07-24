@@ -629,6 +629,13 @@ class AppConfig:
     # is always False regardless of mode.
     model_runtime_mode: str = "disabled"
 
+    # Feature cadence/source for downstream consumers (dataset build, readiness,
+    # train, calibrate, backtest, gate, paper): "rest" (~1-4s recorded feature rows,
+    # default) or "hires" (sub-second WS joined snapshots adapted to the feature-row
+    # schema). READ-ONLY data selector; never affects live/paper enablement. Set from
+    # the --feature-source CLI flag.
+    feature_source: str = "rest"
+
     # Localization
     timezone: str = "Europe/Dublin"
     eod_summary_time: str = "00:00"

@@ -45,7 +45,7 @@ import urllib.error
 
 from .config import AppConfig, load_config
 from .data.recorder import Recorder
-from .data.underlying import CoinbaseSpotClient, build_underlying_client
+from .data.underlying import build_underlying_client
 from .execution.risk import RiskContext, RiskManager
 from .notifications import build_notifier
 from .schemas import (
@@ -55,7 +55,6 @@ from .schemas import (
     OrderBook,
     OrderSide,
     Outcome,
-    RiskDecision,
 )
 from .timeutils import age_ms, now_ms
 
@@ -777,7 +776,6 @@ def cmd_kalshi_backfill_settlements(cfg: AppConfig, args: argparse.Namespace) ->
     # Recorded markets (so we label what we actually saw), refreshed to latest state.
     raw_dir = cfg.data_path() / "raw"
     tickers: set[str] = set()
-    import json as _json
     for p in sorted(raw_dir.glob("kalshi_markets-*.jsonl")) if raw_dir.exists() else []:
         for line in _iter_jsonl_safe(p):
             payload = line.get("payload") if isinstance(line, dict) else None
@@ -2603,9 +2601,14 @@ def cmd_kalshi_backfill_trades(cfg: AppConfig, args: argparse.Namespace) -> int:
         return 1
     print(f"=== kalshi-backfill-trades: series={args.series} start={start} "
           f"end={getattr(args, 'end_date', None) or 'now'} ===")
+    chunk_hours = getattr(args, "chunk_hours", None)
+    chunk_hours = 1.0 if chunk_hours is None else float(chunk_hours)
+    if chunk_hours <= 0:
+        print(f"ERROR: --chunk-hours must be > 0 (got {chunk_hours}); fractions like 0.25 are allowed")
+        return 1
     r = backfill_trades(cfg, series=args.series, start_date=start,
                         end_date=getattr(args, "end_date", None),
-                        chunk_hours=int(getattr(args, "chunk_hours", 1) or 1))
+                        chunk_hours=chunk_hours)
     print(f"  chunks={r['chunks']} fetched={r['fetched']} series_matched={r['series_matched']} "
           f"written={r['written']} dupes_skipped={r['duplicates_skipped']} errors={r['errors']}")
     if r.get("pages_capped_chunks"):
@@ -3769,6 +3772,143 @@ def cmd_kalshi_ws_feasibility(cfg: AppConfig, args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 # Entrypoint
 # --------------------------------------------------------------------------- #
+def cmd_kalshi_ade_selfcheck(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """Alpha Discovery Engine — gauntlet self-validation. Proves the overfitting/multiple-
+    testing machinery rejects pure-selection flukes and accepts a genuine edge. READ-ONLY."""
+    from .discovery import selfcheck
+    res = selfcheck.run_selfcheck()
+    print(selfcheck.format_report(res))
+    return 0 if res["passed"] else 1
+
+
+def cmd_kalshi_ade_vault(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """Alpha Discovery Engine — build (and seal) the holdout vault for a series' window panel.
+    The search must use ONLY vault.search_keys until final validation. READ-ONLY."""
+    import os
+    from .venues.kalshi.model_dataset import build_model_dataset
+    from .discovery import cpcv as _cpcv, holdout as _holdout
+
+    fsrc = getattr(cfg, "feature_source", "rest")
+    print(f"=== kalshi-ade-vault: series={args.series} feature_source={fsrc} ===")
+    rows = build_model_dataset(cfg, series=args.series)["rows"]
+    panel = _cpcv.make_window_panel(rows)
+    print(f"  window panel: {len(panel)} labeled windows")
+    if len(panel) < 20:
+        print("  BLOCKER: need >= 20 labeled windows to build a vault")
+        return 1
+    frac = float(getattr(args, "holdout_fraction", None) or 0.25)
+    seed = int(getattr(args, "seed", None) or 7)
+    vault = _holdout.HoldoutVault.build(panel, holdout_fraction=frac, seed=seed)
+    out = (getattr(args, "out", None)
+           or os.path.join(os.environ.get("DATA_DIR", "data"), "discovery",
+                           f"vault_{args.series}_{fsrc}.json"))
+    vault.save(out)
+    c = vault.counts
+    print(f"  fingerprint: {vault.fingerprint[:16]}...  (pins the data; verify() refuses drift)")
+    print(f"  search={c['n_search']}  holdout={c['n_holdout']} "
+          f"(forward={c['n_forward']} random={c['n_random']})  embargoed_out={c['n_embargoed_out']}")
+    print(f"  saved -> {out}")
+    print("  NOTE: holdout is SEALED — mine only on vault.search_keys; validate survivors ONCE.")
+    return 0
+
+
+def cmd_kalshi_ade_mine(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """Alpha Discovery Engine — run the full mining pipeline: seal a holdout vault, screen
+    features, search after-cost entry rules, force the best through the overfitting gauntlet
+    (Deflated Sharpe + PBO + plateau + cross-asset replication), and validate a survivor ONCE
+    on the sealed holdout. READ-ONLY; never enables paper/live. Expected honest result on this
+    near-efficient market: 'no edge survives'."""
+    from .discovery import engine
+    lead = getattr(args, "mine_lead_seconds", None)
+    lead = 180.0 if lead is None else float(lead)
+    exec_lag = getattr(args, "exec_lag_seconds", None)
+    exec_lag = 3.0 if exec_lag is None else float(exec_lag)
+    report = engine.run_mine(
+        series=args.series, lead_seconds=lead, exec_lag_seconds=exec_lag,
+        top_features=int(getattr(args, "top_features", None) or 10),
+        replicate=not getattr(args, "no_replicate", False),
+        validate_holdout=not getattr(args, "no_holdout", False),
+        verbose=True)
+    v = report.get("verdict")
+    return 0 if (v is None or not v["passed"]) else 0  # 0 either way; a survivor is reported, not an error
+
+
+def cmd_kalshi_ade_mine_pooled(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """Alpha Discovery Engine — POOLED cross-asset mine. Pools all 5 series with per-asset
+    rank-normalized features and forces any candidate to generalize across independent assets
+    (the strongest anti-overfit test). READ-ONLY."""
+    from .discovery import engine
+    lead = getattr(args, "mine_lead_seconds", None)
+    lead = 180.0 if lead is None else float(lead)
+    exec_lag = getattr(args, "exec_lag_seconds", None)
+    exec_lag = 3.0 if exec_lag is None else float(exec_lag)
+    engine.run_mine_pooled(
+        lead_seconds=lead, exec_lag_seconds=exec_lag,
+        top_features=int(getattr(args, "top_features", None) or 10),
+        validate_holdout=not getattr(args, "no_holdout", False), verbose=True)
+    return 0
+
+
+def cmd_kalshi_ade_mine_combo(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """Alpha Discovery Engine — MULTI-FEATURE COMBINATION mine. Walk-forward logistic on the
+    top residual-IC features, traded on divergence vs the market after cost, through the gauntlet.
+    Tests whether COMBINING signals beats the price (all prior mines tested singles). READ-ONLY."""
+    from .discovery import combo
+    lead = getattr(args, "mine_lead_seconds", None)
+    lead = 180.0 if lead is None else float(lead)
+    exec_lag = getattr(args, "exec_lag_seconds", None)
+    exec_lag = 3.0 if exec_lag is None else float(exec_lag)
+    combo.run_combo_mine(series=args.series, lead_seconds=lead, exec_lag_seconds=exec_lag,
+                         validate_holdout=not getattr(args, "no_holdout", False), verbose=True)
+    return 0
+
+
+def cmd_kalshi_ade_mine_conditional(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """Alpha Discovery Engine — REGIME-CONDITIONAL mine. Tags each window by regime (vol,
+    liquidity, volume, trend, time-of-day, options-vol) and runs the full screen/search/
+    gauntlet PER regime cell, with DSR deflated by the total trials across ALL cells (so
+    slicing many regimes can't manufacture a false pocket). READ-ONLY."""
+    from .discovery import conditional
+    lead = getattr(args, "mine_lead_seconds", None)
+    lead = 180.0 if lead is None else float(lead)
+    exec_lag = getattr(args, "exec_lag_seconds", None)
+    exec_lag = 3.0 if exec_lag is None else float(exec_lag)
+    conditional.run_conditional_mine(
+        series=args.series, lead_seconds=lead, exec_lag_seconds=exec_lag,
+        top_features=int(getattr(args, "top_features", None) or 10), verbose=True)
+    return 0
+
+
+def cmd_kalshi_ade_mine_crosscoin(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """Alpha Discovery Engine — CROSS-COIN relative-value mine. Attaches BTC's concurrent
+    underlying state to each alt window and asks (through the gauntlet) whether BTC leads the
+    alts beyond their own price. The first cross-sectional bet. READ-ONLY."""
+    from .discovery import crosscoin
+    lead = getattr(args, "mine_lead_seconds", None)
+    lead = 180.0 if lead is None else float(lead)
+    exec_lag = getattr(args, "exec_lag_seconds", None)
+    exec_lag = 3.0 if exec_lag is None else float(exec_lag)
+    crosscoin.run_crosscoin_mine(
+        lead_seconds=lead, exec_lag_seconds=exec_lag,
+        top_features=int(getattr(args, "top_features", None) or 12),
+        validate_holdout=not getattr(args, "no_holdout", False), verbose=True)
+    return 0
+
+
+def cmd_kalshi_ade_mine_maker(cfg: AppConfig, args: argparse.Namespace) -> int:
+    """Alpha Discovery Engine — MAKER-edge mine. Mines resting-quote strategies (real prints-
+    through fills, after-cost maker P&L) through the gauntlet, so the recurring maker/YES-favorite
+    cells (#13/#15) get a multiple-testing-honest verdict. BTC only (prints). READ-ONLY."""
+    from .discovery import maker_mine
+    lead = getattr(args, "mine_lead_seconds", None)
+    lead = 180.0 if lead is None else float(lead)
+    maker_mine.run_mine_maker(
+        series=args.series, lead_seconds=lead,
+        top_features=int(getattr(args, "top_features", None) or 10),
+        validate_holdout=not getattr(args, "no_holdout", False), verbose=True)
+    return 0
+
+
 _COMMANDS = {
     "init": cmd_init,
     "status": cmd_status,
@@ -3778,6 +3918,14 @@ _COMMANDS = {
     "notification-health": cmd_notification_health,
     "kalshi-notification-health": cmd_notification_health,
     # ----- Kalshi BTC 15m (PRIMARY venue) -----
+    "kalshi-ade-selfcheck": cmd_kalshi_ade_selfcheck,
+    "kalshi-ade-vault": cmd_kalshi_ade_vault,
+    "kalshi-ade-mine": cmd_kalshi_ade_mine,
+    "kalshi-ade-mine-pooled": cmd_kalshi_ade_mine_pooled,
+    "kalshi-ade-mine-maker": cmd_kalshi_ade_mine_maker,
+    "kalshi-ade-mine-crosscoin": cmd_kalshi_ade_mine_crosscoin,
+    "kalshi-ade-mine-conditional": cmd_kalshi_ade_mine_conditional,
+    "kalshi-ade-mine-combo": cmd_kalshi_ade_mine_combo,
     "kalshi-discover": cmd_kalshi_discover,
     "kalshi-nearest-markets": cmd_kalshi_nearest_markets,
     "kalshi-collector-targets": cmd_kalshi_collector_targets,
@@ -3891,9 +4039,9 @@ _COMMANDS = {
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="btc5m",
-        description="BTC binary-options research CLI. PRIMARY venue: Kalshi BTC 15m "
-                    "(KXBTC15M); Polymarket BTC 5m is dormant/reference. Record-only / "
-                    "paper-first; live trading disabled by default.")
+        description="Kalshi crypto 15-minute binary-market research CLI. Primary series "
+                    "KXBTC15M (BTC up/down), plus ETH/SOL/DOGE/XRP. Record-only / "
+                    "research; live trading is disabled by default and unimplemented.")
     parser.add_argument("command", choices=sorted(_COMMANDS), help="command to run")
     parser.add_argument("--mode", default=None, help="config mode overlay (e.g. paper)")
     parser.add_argument("--asset", default="BTC", help="asset symbol (default BTC)")
@@ -4109,8 +4257,9 @@ def main(argv: list[str] | None = None) -> int:
                         choices=["quote", "prints-through", "prints-front"],
                         help="kalshi-maker-entry-study: quote-crossing (v1 lower bound) or REAL "
                              "trade prints (certain trade-through / optimistic front-of-queue)")
-    parser.add_argument("--chunk-hours", type=int, default=1, dest="chunk_hours",
-                        help="kalshi-backfill-trades: tape chunk size in hours (default 1)")
+    parser.add_argument("--chunk-hours", type=float, default=1.0, dest="chunk_hours",
+                        help="kalshi-backfill-trades: tape chunk size in hours; fractions allowed "
+                             "(e.g. 0.25 = 15 min for dense tape periods); must be > 0 (default 1)")
     # ----- kalshi-reprice-lag-* / shock-scan (READ-ONLY event study) -----
     parser.add_argument("--start-date", default=None, dest="start_date",
                         help="start day YYYYMMDD inclusive (reprice-lag / maker-entry-study / maker-favorite-report forward boundary / backfill-trades)")
@@ -4131,6 +4280,30 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--hires", action="store_true", dest="hires",
                         help="reprice-lag study/report/sensitivity: use HIGH-RES v2 (joined snapshots); "
                              "blocks clearly if insufficient — never falls back to low-res v1")
+    parser.add_argument("--mine-lead-seconds", type=float, default=None, dest="mine_lead_seconds",
+                        help="kalshi-ade-mine: seconds-to-close of the decision snapshot (default 180)")
+    parser.add_argument("--top-features", type=int, default=None, dest="top_features",
+                        help="kalshi-ade-mine: how many screened features to search over (default 10)")
+    parser.add_argument("--exec-lag-seconds", type=float, default=None, dest="exec_lag_seconds",
+                        help="kalshi-ade-mine: post-signal execution lag — fills priced at the quote "
+                             "this many seconds AFTER the decision snapshot (default 3; 0 = same-instant, "
+                             "the stale-quote-prone behaviour, for A/B)")
+    parser.add_argument("--no-replicate", action="store_true", dest="no_replicate",
+                        help="kalshi-ade-mine: skip cross-asset replication of a candidate")
+    parser.add_argument("--no-holdout", action="store_true", dest="no_holdout",
+                        help="kalshi-ade-mine: skip sealed-holdout validation of a survivor")
+    parser.add_argument("--holdout-fraction", type=float, default=None, dest="holdout_fraction",
+                        help="kalshi-ade-vault: fraction of windows sealed into the holdout (default 0.25)")
+    parser.add_argument("--seed", type=int, default=None, dest="seed",
+                        help="kalshi-ade-vault: RNG seed for the random holdout block (default 7)")
+    parser.add_argument("--out", default=None, dest="out",
+                        help="kalshi-ade-vault: output path for the vault manifest JSON")
+    parser.add_argument("--feature-source", choices=("rest", "hires"), default="rest",
+                        dest="feature_source",
+                        help="cadence/source for feature rows feeding dataset/readiness/train/"
+                             "calibrate/backtest/gate/paper: 'rest' (~1-4s recorded feature rows, "
+                             "default) or 'hires' (sub-second WS joined snapshots, adapted to the "
+                             "feature-row schema). READ-ONLY; never changes live/paper enablement.")
     parser.add_argument("--horizon-ms", type=int, default=None, dest="horizon_ms",
                         help="reprice-lag v2: optional single response-horizon focus (ms)")
     parser.add_argument("--min-net-edge-cents", type=float, default=None, dest="min_net_edge_cents",
@@ -4180,6 +4353,12 @@ def main(argv: list[str] | None = None) -> int:
         args.seconds = 0.0 if args.command == "collect-continuous" else 60.0
 
     cfg = load_config(mode=args.mode)
+    # Cadence/source selector flows to every feature-row consumer via the config
+    # (single flag -> all commands) without changing each call signature. REST default.
+    try:
+        cfg.feature_source = getattr(args, "feature_source", "rest") or "rest"
+    except Exception:  # noqa: BLE001  (frozen/odd config — loaders still default to rest)
+        pass
     return _COMMANDS[args.command](cfg, args)
 
 

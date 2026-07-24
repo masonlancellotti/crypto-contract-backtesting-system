@@ -246,16 +246,21 @@ def assess_kalshi_readiness(
     }
 
 
-def load_kalshi_readiness(config) -> dict:
-    """Load Kalshi rows from disk and assess readiness."""
+def load_kalshi_readiness(config, *, source=None) -> dict:
+    """Load Kalshi rows from disk and assess readiness.
+
+    ``source`` selects the feature cadence (``rest`` default | ``hires`` sub-second);
+    ``None`` defers to ``config.feature_source``. Labels/orderbook/underlying counts
+    are cadence-independent and always read from the recorded REST streams.
+    """
+    from .feature_source import load_feature_rows
     data = config.data_path()
     raw = data / "raw"
     norm = data / "normalized"
     labels = data / "labels"
-    feats = data / "features"
 
     label_rows = _load_glob(labels, "kalshi_settlement_labels-*.jsonl")
-    feature_rows = [_event(r) for r in _load_glob(feats, "kalshi_feature_rows*.jsonl")]
+    feature_rows = load_feature_rows(config, source=source)
     norm_ob = _load_glob(norm, "kalshi_orderbook-*.jsonl")
     raw_ob = _load_glob(raw, "kalshi_orderbook-*.jsonl")
     und = _load_glob(norm, "underlying_*.jsonl")

@@ -21,8 +21,7 @@ from ...labels.labeling import LabeledSample, purge_embargo_indices
 from .feature_schema import deribit_candidate_feature_names
 from .labels_audit import dedup_labels, load_label_rows
 from .readiness import (
-    MIN_BACKTEST_WINDOWS, MIN_TRAIN_ROWS, MIN_TRAIN_WINDOWS, _event, _load_glob,
-    feature_row_usable,
+    MIN_BACKTEST_WINDOWS, MIN_TRAIN_ROWS, MIN_TRAIN_WINDOWS, feature_row_usable,
 )
 
 WINDOW_MS = 15 * 60 * 1000
@@ -45,13 +44,17 @@ REPORT_COLUMNS = [
 ]
 
 
-def _load_feature_rows(config) -> list[dict]:
-    return [_event(r) for r in _load_glob(config.data_path() / "features", "kalshi_feature_rows*.jsonl")]
+def _load_feature_rows(config, *, source=None) -> list[dict]:
+    from .feature_source import load_feature_rows
+    return load_feature_rows(config, source=source)
 
 
-def train_dry_run(config, *, series: str = "KXBTC15M", embargo_windows: int = 1) -> dict:
+def train_dry_run(config, *, series: str = "KXBTC15M", embargo_windows: int = 1,
+                  source=None) -> dict:
     """Assemble the would-be training table and report; never fits a model."""
-    feats = _load_feature_rows(config)
+    from .feature_source import normalize_source
+    source = normalize_source(source, config=config)
+    feats = _load_feature_rows(config, source=source)
     labels = dedup_labels(load_label_rows(config))
     official = {tk: lr for tk, lr in labels.items()
                 if lr.get("label_source_status") == "OFFICIAL" and lr.get("label_yes_resolved") is not None}

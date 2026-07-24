@@ -27,14 +27,14 @@ from typing import Callable, Optional
 from .book_freshness import effective_book_age
 from .calibrate import Calibrator
 from .edge_policy import EdgePolicyConfig, EdgeInputs, evaluate_edge
-from .executable_backtest import predict_from_artifact, settle_trade
+from .executable_backtest import predict_from_artifact
 from .fees import KalshiFeeModel
 from .freshness import paper_candidate_freshness
 from .model_dataset import build_model_dataset
 from .paper import PAPER_CANDIDATE, REJECTED, WATCH, decision_window_skip_reason
 from .paper_promotion import load_active_promotion
 from .policy import (
-    BacktestValidity, CalibrationValidity, ExecutablePrices, ModelValidity, PolicyInput,
+    CalibrationValidity, ExecutablePrices, ModelValidity, PolicyInput,
     SourceFreshness, evaluate_policy,
 )
 from .policy_runtime import assess_backtest_validity
@@ -458,7 +458,14 @@ def latest_feature_rows(config, *, series: str = "KXBTC15M", lines: int = 4000) 
     (max ``as_of_ms``) row per ``market_ticker`` — the snapshot a live decision would act on.
     These are still *collection* rows (one per market); callers MUST filter to executable active
     rows via ``_decision_eligibility`` before scoring. ``lines`` must be wide enough to span the
-    full set of discovered markets across a couple of recent polls."""
+    full set of discovered markets across a couple of recent polls.
+
+    When ``config.feature_source == 'hires'`` the freshest rows come from the
+    sub-second WS joined snapshots instead (same feature-row schema), so the paper /
+    decision path can run on second-level data. REST is the default and unchanged."""
+    from .feature_source import HIRES, latest_hires_feature_rows, normalize_source
+    if normalize_source(None, config=config) == HIRES:
+        return latest_hires_feature_rows(config, series=series)
     d = config.data_path() / "features"
     if not d.exists():
         return []

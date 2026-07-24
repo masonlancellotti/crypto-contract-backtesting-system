@@ -59,24 +59,20 @@ def load_label_rows(config) -> list[dict]:
     return out
 
 
-def _feature_rows(config) -> list[dict]:
-    d = config.data_path() / "features"
-    out: list[dict] = []
-    if d.exists():
-        for p in sorted(d.glob("kalshi_feature_rows*.jsonl")):
-            for row in _iter_jsonl(p):
-                out.append(row.get("event") if isinstance(row.get("event"), dict) else row)
-    return out
+def _feature_rows(config, *, source=None) -> list[dict]:
+    from .feature_source import load_feature_rows
+    return load_feature_rows(config, source=source)
 
 
-def load_feature_tickers(config) -> set[str]:
+def load_feature_tickers(config, *, source=None) -> set[str]:
     """Distinct market_tickers that have at least one recorded feature row (presence)."""
-    return {r.get("market_ticker") for r in _feature_rows(config) if r.get("market_ticker")}
+    return {r.get("market_ticker") for r in _feature_rows(config, source=source)
+            if r.get("market_ticker")}
 
 
-def load_usable_feature_tickers(config) -> set[str]:
+def load_usable_feature_tickers(config, *, source=None) -> set[str]:
     """Distinct market_tickers with >=1 USABLE executable feature row (gate basis)."""
-    return {r.get("market_ticker") for r in _feature_rows(config)
+    return {r.get("market_ticker") for r in _feature_rows(config, source=source)
             if r.get("market_ticker") and feature_row_usable(r)}
 
 

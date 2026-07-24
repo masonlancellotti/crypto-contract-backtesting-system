@@ -24,15 +24,16 @@ from .feature_schema import (
 from .labels_audit import dedup_labels, load_label_rows
 from .readiness import (
     MIN_BACKTEST_WINDOWS, MIN_TRAIN_ROWS, MIN_TRAIN_WINDOWS,
-    _event, _load_glob, feature_row_usable,
+    feature_row_usable,
 )
 
 # Every schema feature name carried on each model row (context + training inputs).
 _ALL_FEATURE_NAMES = [s.name for s in SCHEMA]
 
 
-def _load_feature_rows(config) -> list[dict]:
-    return [_event(r) for r in _load_glob(config.data_path() / "features", "kalshi_feature_rows*.jsonl")]
+def _load_feature_rows(config, *, source=None) -> list[dict]:
+    from .feature_source import load_feature_rows
+    return load_feature_rows(config, source=source)
 
 
 def _official_labels(config) -> dict[str, dict]:
@@ -48,10 +49,13 @@ def build_model_dataset(
     include_deribit: str = "auto",       # "true" | "false" | "auto"
     strict: bool = False,
     feature_version: str = "all",        # "all" (v1/v2/v3 coexist) | "latest" (v3 only)
+    source=None,                          # None -> config.feature_source (rest default)
 ) -> dict:
     """Build the model-ready dataset (in memory) + full accounting. No training."""
+    from .feature_source import normalize_source
+    source = normalize_source(source, config=config)
     duration_ms = int(getattr(getattr(config, "low_latency", None), "market_duration_seconds", 900)) * 1000
-    feats = _load_feature_rows(config)
+    feats = _load_feature_rows(config, source=source)
     official = _official_labels(config)
 
     counts = {
@@ -140,6 +144,7 @@ def build_model_dataset(
     gate = _gate(distinct_windows, len(rows))
     return {
         "series": series,
+        "feature_source": source,
         "rows": rows,
         "counts": counts,
         "distinct_windows": distinct_windows,

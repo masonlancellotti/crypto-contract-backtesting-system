@@ -174,7 +174,8 @@ def _fmt_age(ms: Optional[int]) -> str:
 # --------------------------------------------------------------------------- #
 # Collector status (freshness from files + source-health; never touches procs)
 # --------------------------------------------------------------------------- #
-def collector_status(config, *, stale_threshold_seconds: int = 120, record_history: bool = False) -> dict:
+def collector_status(config, *, stale_threshold_seconds: int = 120, record_history: bool = False,
+                     source=None) -> dict:
     from .source_health import assess_source_health
     sh = assess_source_health(config)
     by = {s["source"]: s for s in sh["sources"]}
@@ -222,7 +223,7 @@ def collector_status(config, *, stale_threshold_seconds: int = 120, record_histo
     for row in _iter_jsonl(hist_path):
         prev = row
     try:
-        gp = gate_progress(config)
+        gp = gate_progress(config, source=source)
         out["gate_windows"] = gp["gate_windows"]
         if prev is not None and prev.get("gate_windows") is not None:
             out["gate_windows_delta_since_last"] = gp["gate_windows"] - prev["gate_windows"]
@@ -240,14 +241,14 @@ def collector_status(config, *, stale_threshold_seconds: int = 120, record_histo
 # --------------------------------------------------------------------------- #
 # Gate progress (DISTINCT feature-backed official windows; orphans excluded)
 # --------------------------------------------------------------------------- #
-def gate_progress(config) -> dict:
+def gate_progress(config, *, source=None) -> dict:
     from .labels_audit import dedup_labels, load_label_rows
+    from .feature_source import load_feature_rows
     from .readiness import (
-        MIN_BACKTEST_WINDOWS, MIN_TRAIN_ROWS, MIN_TRAIN_WINDOWS, _event, _load_glob,
+        MIN_BACKTEST_WINDOWS, MIN_TRAIN_ROWS, MIN_TRAIN_WINDOWS,
         feature_row_usable,
     )
-    data = config.data_path()
-    feats = [_event(r) for r in _load_glob(data / "features", "kalshi_feature_rows*.jsonl")]
+    feats = load_feature_rows(config, source=source)
     labels = dedup_labels(load_label_rows(config))
     official = {tk for tk, lr in labels.items()
                 if lr.get("label_source_status") == "OFFICIAL" and lr.get("label_yes_resolved") is not None}

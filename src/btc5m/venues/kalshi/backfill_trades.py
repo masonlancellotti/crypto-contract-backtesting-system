@@ -51,10 +51,16 @@ def existing_trade_ids(config) -> set[str]:
 
 
 def backfill_trades(config, *, series: str = "KXBTC15M", start_date: str,
-                    end_date: Optional[str] = None, chunk_hours: int = 1,
+                    end_date: Optional[str] = None, chunk_hours: float = 1.0,
                     limit: int = 1000, max_pages_per_chunk: int = 300,
                     emit=print) -> dict:
-    """Fetch + persist historical trade prints for ``series``. Idempotent."""
+    """Fetch + persist historical trade prints for ``series``. Idempotent.
+
+    ``chunk_hours`` may be fractional (e.g. 0.25 = 15-minute chunks) for dense
+    tape periods where an hour of prints exceeds the page cap.
+    """
+    if not chunk_hours or chunk_hours <= 0:
+        raise ValueError(f"chunk_hours must be > 0, got {chunk_hours!r}")
     client = KalshiClient(config)
     seen = existing_trade_ids(config)
     emit(f"  existing trade_ids on disk: {len(seen)}")
