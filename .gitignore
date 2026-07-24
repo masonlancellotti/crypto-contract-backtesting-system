@@ -34,6 +34,8 @@ reports/calibration/
 reports/backtests/
 reports/paper/
 *.html
+# the working paper is a committed deliverable, not a generated report
+!docs/paper.html
 
 # --- Zero-key demo sample (curated inputs + reference reports ARE committed) ---
 # Overrides the broad *.jsonl / *.csv ignores above for the small committed sample;
