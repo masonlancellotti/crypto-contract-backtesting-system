@@ -73,3 +73,11 @@ ENV/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Locally generated research outputs (curated snapshots are committed explicitly)
+reports/series/
+reports/hires/
+reports/models/
+reports/reprice_lag/
+reports/maker/
+data/series/
