@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: lint + representative tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          # ML stack matches the local research venv; lightgbm is an optional challenger.
+          pip install numpy pandas scikit-learn scipy pyarrow
+          pip install lightgbm || echo "lightgbm wheel unavailable; optional challenger skipped"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Safety proof (live trading is disabled)
+        run: python -m btc5m.cli check-live-disabled
+
+      # A representative, fast subset (~150 tests, well under 10 minutes) covering the
+      # gate/labels/fees math, calibration + executable backtest, the alpha-discovery
+      # gauntlet/holdout/self-check, the paper-experiment framework, risk + edge policy,
+      # the feature-source abstraction, multi-series parsing, and the live-disabled
+      # safety invariants. The complete 677-test suite runs nightly (nightly.yml).
+      - name: Representative tests
+        run: |
+          python -m pytest -q -p no:cacheprovider \
+            tests/test_kalshi_paper_experiment.py \
+            tests/test_kalshi_calibration_backtest.py \
+            tests/test_discovery_gauntlet.py \
+            tests/test_discovery_holdout.py \
+            tests/test_discovery_selfcheck.py \
+            tests/test_kalshi_labels_fees.py \
+            tests/test_risk.py \
+            tests/test_kalshi_edge_policy.py \
+            tests/test_kalshi_feature_source.py \
+            tests/test_live_disabled_and_notify.py \
+            tests/test_kalshi_cli_safety.py \
+            tests/test_labeling.py \
+            tests/test_kalshi_readiness.py \
+            tests/test_kalshi_policy.py \
+            tests/test_multi_series.py

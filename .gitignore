@@ -35,6 +35,13 @@ reports/backtests/
 reports/paper/
 *.html
 
+# --- Zero-key demo sample (curated inputs + reference reports ARE committed) ---
+# Overrides the broad *.jsonl / *.csv ignores above for the small committed sample;
+# regenerated pipeline outputs (models/datasets, demo report dir) stay ignored.
+!sample_data/**
+sample_data/models/
+sample_reports/
+
 # --- Logs ---
 logs/
 *.log
