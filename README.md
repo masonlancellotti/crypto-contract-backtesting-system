@@ -96,11 +96,14 @@ python -m pytest -q                        # 677 offline tests, no keys / no net
 
 ## Zero-key demo (no API keys, no network)
 
-A small curated sample (`sample_data/`, ≈1.6 MB — one BTC day: 95 OFFICIAL-labeled
-15-minute windows) ships in the repo so an outside reviewer can run the full research
-pipeline offline. Point `DATA_DIR` at the sample and run the calibration + executable
-backtest chain (everything is correctly stamped `NON_TRADABLE_DIAGNOSTIC_ONLY` — the
-sample is below the 150-window training gate by design):
+A curated sample (`sample_data/`, ≈9 MB — one full BTC day of 95 OFFICIAL-labeled
+15-minute windows for the reproducible demo chain, plus downsampled ETH/SOL/DOGE
+windows across several days so the dashboard's calibration curves pool ~1,800 real
+market-implied-vs-outcome pairs) ships in the repo so an outside reviewer can run the
+full research pipeline offline. Point `DATA_DIR` at the sample and run the calibration
++ executable backtest chain on BTC (everything is correctly stamped
+`NON_TRADABLE_DIAGNOSTIC_ONLY` — the sample is below the 150-window training gate by
+design):
 
 ```powershell
 $env:DATA_DIR    = "$PWD\sample_data"
@@ -121,6 +124,67 @@ intended); the calibration report shows isotonic improving reliability
 market-implied trades 0 by construction) — the no-edge result, in miniature. Reference
 copies of the generated reports are committed under `sample_data/expected/`. Regenerated
 models/datasets land in `sample_data/models/` and are gitignored.
+
+## Interactive research dashboard
+
+A keyless, hermetic dashboard renders the whole finding from the committed sample and
+report artifacts — no API keys, no network, no live compute. Every number on screen
+traces to a committed file, and the story is written in plain English for a
+non-technical reader.
+
+```powershell
+pip install -e ".[dashboard]"
+python -m btc5m.cli dashboard            # FastAPI on http://127.0.0.1:8791
+```
+
+Five views (progressive disclosure — the Overview answers everything in ten seconds,
+the rest are drill-ins):
+
+- **Overview** — the plain-English story ("38 ways tested, 1 survived the statistics,
+  0 worth trading"), six headline tiles, the 38-leg verdict breakdown, and the
+  fees-kill-alpha table.
+- **Calibration** — reliability curves (market-implied computed live from the sample vs
+  the committed model raw/isotonic buckets), per-model and per-coin ECE.
+- **Research Map** — the 38 hypotheses as a filterable table (hypothesis → key stat →
+  verdict), distilled into a machine-readable [`docs/research_ledger.json`](docs/research_ledger.json)
+  and sourced back to [`docs/RESEARCH_LEDGER.md`](docs/RESEARCH_LEDGER.md).
+- **Backtest** — the executable, fee-decomposed backtest (gross → fees → net) with
+  walk-forward stability.
+- **Replay** — a scrubbable, animated order-book replay of one real recorded 15-minute
+  window (`sample_data/replay_window/`): the bid/ask ladder, spot, model vs
+  market-implied probability, and the freshness/depth gates, all the way through
+  settlement.
+
+| Overview | Calibration | Research Map |
+|---|---|---|
+| ![Overview](docs/screenshots/overview.png) | ![Calibration](docs/screenshots/calibration.png) | ![Research Map](docs/screenshots/research_map.png) |
+
+| Backtest | Replay |
+|---|---|
+| ![Backtest](docs/screenshots/backtest.png) | ![Replay](docs/screenshots/replay.png) |
+
+## The paper
+
+The full write-up is a proper working paper with multiple-testing control:
+[`docs/PAPER.md`](docs/PAPER.md) (and a styled, self-contained
+[`docs/paper.html`](docs/paper.html)) — Abstract / Market & data / Methodology
+(leakage controls, purged CV + embargo, isotonic calibration, executable-fee
+backtests) / Alpha-discovery protocol (DSR, PBO/CSCV, sealed holdout) / Results /
+Robustness / Conclusion ("efficient after costs at retail latency") / Limitations.
+Every table cites the committed report file it was computed from.
+
+## Live pulse (keyless, read-only)
+
+`btc5m live-pulse` reads Kalshi's **public** market-data endpoints for any currently
+listed 15-minute crypto series (BTC/ETH/SOL/DOGE/XRP) and prints the implied
+probability + top-of-book in the terminal. No auth, no orders. It degrades gracefully
+when nothing is listed and falls back to a committed recorded fixture; `--fixture`
+forces the hermetic, offline path (also the test path).
+
+```powershell
+python -m btc5m.cli live-pulse            # public read (falls back to fixture offline)
+python -m btc5m.cli live-pulse --fixture  # committed recorded fixture, never touches the network
+```
 
 ## Configuration
 
