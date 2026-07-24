@@ -54,4 +54,7 @@ jobs:
             tests/test_labeling.py \
             tests/test_kalshi_readiness.py \
             tests/test_kalshi_policy.py \
-            tests/test_multi_series.py
+            tests/test_multi_series.py \
+            tests/test_research_ledger_schema.py \
+            tests/test_dashboard.py \
+            tests/test_live_pulse.py
