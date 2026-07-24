@@ -20,7 +20,7 @@ LEAD = 180.0
 
 def main():
     btc_clock = crosscoin.build_btc_clock(lead_seconds=LEAD)
-    print(f"=== cross-coin tradability gap (rule: BTC implied-prob -> follow on the alt) ===")
+    print("=== cross-coin tradability gap (rule: BTC implied-prob -> follow on the alt) ===")
     print(f"{'alt':10s} {'n':>4s} {'btc_p IC_resid':>14s} {'taker_net':>10s} {'t':>6s} "
           f"{'spread':>7s} {'breakeven_spread':>16s}")
     for s in crosscoin.ALTS:

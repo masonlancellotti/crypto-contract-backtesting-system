@@ -5,7 +5,7 @@ Methodology mirrors the validated studies: official labels only, executable ASK
 prices (never midpoint), fee subtracted, one snapshot per (window, decision point)
 so windows are the independent unit. EV is per-contract in dollars.
 """
-import glob, json, os, math, sys
+import glob, json, sys
 try: sys.stdout.reconfigure(encoding="utf-8")
 except Exception: pass
 from collections import defaultdict

@@ -11,7 +11,7 @@ Outcome = official label. One snapshot per (window, time bucket); window is the
 independent unit. distance_to_start is a Coinbase/Binance proxy for the BRTI
 settlement distance (noisy near close).
 """
-import glob, json, sys, statistics
+import glob, json, sys
 try: sys.stdout.reconfigure(encoding="utf-8")
 except Exception: pass
 from collections import defaultdict
@@ -286,7 +286,7 @@ if fwd_e:
     byday=defaultdict(list)
     for r in fwd_e: byday[r["day"]].append(ev_taker(r))
     print("  forward per-day EV(taker): " + "  ".join(f"{d}:{mean(v)*100:+.1f}c(n{len(v)})" for d,v in sorted(byday.items())))
-    print(f"  forward windows by date: " + ", ".join(f"{d}={sum(1 for r in fwd_e if r['day']==d)}" for d in sorted({r['day'] for r in fwd_e})))
+    print("  forward windows by date: " + ", ".join(f"{d}={sum(1 for r in fwd_e if r['day']==d)}" for d in sorted({r['day'] for r in fwd_e})))
 
 # =========================================================================== #
 # (B) VOL-NORMALIZED Z determinism cut + entry sweep

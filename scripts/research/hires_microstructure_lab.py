@@ -411,10 +411,10 @@ def run(series, start, end, *, lead_seconds, mode, config=None):
                       f"+/-{ac['net_c_se']:.3f} (t={ac['t_stat']:+.2f}) win={ac['win_rate']:.2%} "
                       f"total={ac['total_c']:+.1f}c")
             else:
-                print(f"   after-cost taker: no trades cleared the divergence threshold")
+                print("   after-cost taker: no trades cleared the divergence threshold")
 
     if mode in ("all", "favorite") and drows:
-        print(f"\n-- deep-favorite cell (taker, after real fee) --")
+        print("\n-- deep-favorite cell (taker, after real fee) --")
         rowsf = favorite_cells(drows, fee, z_split=True)
         print(f"   {'band':11s} {'z':6s} {'n':>4s} {'fav_imp':>7s} {'realwin':>7s} "
               f"{'gap_c':>6s} {'net_c':>7s} {'t':>5s} {'yes%':>5s}")
@@ -424,7 +424,7 @@ def run(series, start, end, *, lead_seconds, mode, config=None):
                   f"{r['t']:>+5.1f} {r['yes_share']:>5.0%}")
 
     if mode in ("all", "ic"):
-        print(f"\n-- forward sub-second move ICs (Spearman, diagnostic) --")
+        print("\n-- forward sub-second move ICs (Spearman, diagnostic) --")
         for H in (1000, 5000):
             samples = forward_returns(by_ticker, H)
             tab = ic_table(samples, ["mom_250ms", "mom_1s", "mom_5s", "perp_lead",
