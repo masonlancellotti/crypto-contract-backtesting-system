@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "note": "Committed headline findings for the dashboard Overview. Every value carries a `source` citing the committed artifact it traces to. Numbers are the honest research record; nothing here is a profitability claim.",
+  "market": "KXBTC15M (Kalshi 15-minute BTC up/down binary) + ETH/SOL/DOGE/XRP",
+  "as_of": "2026-06-15",
+  "plain_story": {
+    "headline": "We tested 38 ways to beat this market. After fees, none survived.",
+    "paragraphs": [
+      "Kalshi runs a market on a simple bet: will Bitcoin be higher 15 minutes from now? Traders buy and sell \"yes\" and \"no\", and the price is the crowd's live estimate of the probability.",
+      "This lab asked, rigorously, whether any model or trading rule can do better than that crowd price. Across 38 separate ideas — machine-learning models, stale-quote sniping, market-making, cross-coin signals — the answer was the same: the market's own price is already the best forecaster, and once you subtract trading costs (about 2.5 cents a round trip), every strategy loses.",
+      "One pattern did slip through the statistical filters, but a close look showed it is a trap: it wins tiny amounts almost every time while risking a rare, huge loss. So the honest score is 38 tested, 1 survivor, 0 you would actually trade. That negative result — measured carefully enough to trust — is the point."
+    ]
+  },
+  "tiles": [
+    {
+      "key": "market_implied_window_ece",
+      "label": "Market-implied window-ECE",
+      "plain": "How close is the market price to reality?",
+      "value": 0.020,
+      "unit": "ECE",
+      "caption": "The market's own price is the best-calibrated forecaster we measured — its stated odds are almost exactly right.",
+      "explain": "ECE (calibration error) is the average gap between a predicted probability and how often it actually happens. Lower is better; 0.020 means the price is off by about 2 points on average.",
+      "source": "docs/RESEARCH_LEDGER.md leg 3; README.md headline table"
+    },
+    {
+      "key": "best_model_window_ece",
+      "label": "Best model window-ECE",
+      "plain": "Can our best model do better?",
+      "value": 0.031,
+      "unit": "ECE",
+      "caption": "No. Every model we trained is worse-calibrated than the market price it was trying to beat.",
+      "explain": "Same calibration-error yardstick as the tile on the left — higher (worse) here than the market's 0.020.",
+      "source": "docs/RESEARCH_LEDGER.md leg 3 (0.031+); leg 21 hires 0.024-0.057"
+    },
+    {
+      "key": "n_hypotheses",
+      "label": "Hypotheses tested",
+      "plain": "How many ways did we try to win?",
+      "value": 38,
+      "unit": "ideas",
+      "caption": "38 distinct trading ideas, each tested honestly and written up. The full record is the Research Map.",
+      "explain": "Each \"leg\" is one hypothesis with a method, a key number, and a verdict.",
+      "source": "docs/research_ledger.json (38 legs)"
+    },
+    {
+      "key": "round_cost_cents",
+      "label": "Round-trip cost",
+      "plain": "What does trading cost?",
+      "value": 2.5,
+      "unit": "¢",
+      "caption": "About 2.5 cents per round trip (~1c spread + ~1.5c fee). No taker strategy earned enough to clear it.",
+      "explain": "The spread is the gap between buy and sell prices; the fee is Kalshi's cut. A strategy has to beat both just to break even.",
+      "source": "docs/RESEARCH_LEDGER.md one-paragraph summary; README.md"
+    },
+    {
+      "key": "gauntlet_survivors",
+      "label": "Survived the gauntlet",
+      "plain": "Anything beat the statistics?",
+      "value": 1,
+      "unit": "of 38",
+      "caption": "One cell passed every statistical filter (including a locked-away holdout it had never seen) — the deep-favorite maker trade.",
+      "explain": "The \"gauntlet\" adjusts for how many ideas were tried, so a lucky-looking result can't sneak through. Surviving it is rare and meaningful.",
+      "source": "docs/RESEARCH_LEDGER.md leg 15; reports/ADE_OTHER_PATHS_20260615.md"
+    },
+    {
+      "key": "bankable_edges",
+      "label": "Actually tradeable",
+      "plain": "Would you trade it?",
+      "value": 0,
+      "unit": "of 1",
+      "caption": "No. The survivor collects ~2–4c almost every time but risks a −96c loss when it's wrong — a penny in front of a steamroller.",
+      "explain": "The statistical score can't see that rare huge loss because it never showed up in the small winning sample. That blind spot is exactly why it isn't bankable.",
+      "source": "docs/RESEARCH_LEDGER.md leg 15 caveat; README.md"
+    }
+  ],
+  "fees_kill_alpha": {
+    "headline": "Fees kill the alpha",
+    "plain": "Even models that look smart before costs turn into losers after the spread and fee are subtracted.",
+    "detail": "On the committed 95-window sample, the executable backtest (buying at the real ask price, then subtracting fees) turns every trained model net-negative. The market-implied forecaster never trades — it has no edge over itself.",
+    "sample_backtest": [
+      {"model": "distance_time_vol", "net_pnl_cents": -2.058, "per_contract_cents": -0.0762, "trades": 27},
+      {"model": "microstructure", "net_pnl_cents": -3.613, "per_contract_cents": -0.1390, "trades": 26},
+      {"model": "market_implied", "net_pnl_cents": 0.0, "per_contract_cents": null, "trades": 0}
+    ],
+    "source": "sample_data/expected/kalshi_baseline_backtest.md"
+  },
+  "verdict_of_the_lab": "The 15-minute Bitcoin market on Kalshi is efficient after costs at retail speed: the crowd price already reflects everything our whole feature library knows. The honest negative result is the product.",
+  "glossary": {
+    "ECE": "Calibration error — the average gap between a predicted probability and how often it really happens. Lower is better.",
+    "calibration": "How well stated odds match reality. A well-calibrated 70% forecast is right about 70% of the time.",
+    "market-implied": "The probability implied by the live market price — the crowd's own forecast.",
+    "reliability diagram": "A chart that plots predicted probability against what actually happened. A perfect forecaster sits on the diagonal line.",
+    "executable backtest": "A replay that fills trades at the real price you could have gotten (the ask), then subtracts fees — not an optimistic mid-price.",
+    "taker": "A trader who crosses the spread to trade immediately, paying the fee.",
+    "maker": "A trader who posts a resting order and waits to be filled, hoping to avoid the spread.",
+    "spread": "The gap between the best buy price and best sell price.",
+    "Deflated Sharpe Ratio": "A performance score adjusted for how many strategies were tried — it deflates results that only look good because you searched a lot.",
+    "DSR": "Deflated Sharpe Ratio — a performance score adjusted for how many strategies were tried.",
+    "PBO": "Probability of Backtest Overfitting — the chance a strategy's edge is just curve-fitting that won't repeat.",
+    "sealed holdout": "A slice of data locked away and tested against exactly once, so a strategy can't be tuned to it.",
+    "profit factor": "Gross wins divided by gross losses. Above 1 makes money; around 1 is break-even.",
+    "reprice-lag": "The idea that Kalshi's price is slow to update after Bitcoin moves, leaving a brief stale quote to pick off."
+  }
+}
