@@ -9,8 +9,6 @@ fill simulator settles vs the OFFICIAL label; abort criteria fire; nothing goes 
 import json
 from datetime import datetime, timezone
 
-import pytest
-
 from btc5m.config import load_config
 
 WIN = 15 * 60 * 1000
@@ -67,6 +65,12 @@ def _setup(tmp_path, monkeypatch, *, promote=True, diagnostic=False, fresh_sourc
     from btc5m.venues.kalshi.feature_schema import DISTANCE_TIME_VOL_FEATURES, MODEL_SCHEMA_VERSION
     feats = tmp_path / "features"; feats.mkdir(parents=True)
     labels = tmp_path / "labels"; labels.mkdir(parents=True)
+    # These are already-settled, historical windows: a fixed instant far in the past
+    # (well before any plausible wall-clock run date), so the rows always read as stale
+    # to the freshness gates and never as decision-fresh. This is the fail-safe anchor —
+    # as the calendar advances the gap to `now` only grows, so the fixture never drifts
+    # into a fresh-looking regime. (Live-decision tests write their own today-dated
+    # fresh rows separately via _write_fresh_source / _write_live_feature_rows.)
     base = 1_780_000_000_000
     fr, lr = [], []
     for w in range(4):
