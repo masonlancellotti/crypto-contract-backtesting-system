@@ -1,4 +1,4 @@
-# Kalshi Microstructure Lab
+# Crypto Contract Backtesting System
 
 A quant-research lab for short-horizon binary prediction markets. It ingests
 Kalshi crypto **15-minute up/down** contracts (BTC primary, plus ETH/SOL/DOGE/XRP)
@@ -14,9 +14,8 @@ are **efficient after costs**. The honest negative result is the product.
 > and unimplemented (see [below](#execution-layer-intentionally-disabled)). Nothing
 > in this build can submit or cancel a real order.
 
-> **Names:** the distribution is `kalshi-microstructure-lab`; the import package and
-> CLI keep the stable short name `btc5m`. The repository folder can be renamed at
-> publish time.
+> **Names:** the repository is `crypto-contract-backtesting-system`; the import package and
+> CLI keep the stable short name `btc5m` (BTC 15-minute contracts were the first target).
 
 ## Headline findings
 
