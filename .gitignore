@@ -36,6 +36,8 @@ reports/paper/
 *.html
 # the working paper is a committed deliverable, not a generated report
 !docs/paper.html
+# the dashboard frontend is source, not a generated report
+!src/btc5m/dashboard/static/index.html
 
 # --- Zero-key demo sample (curated inputs + reference reports ARE committed) ---
 # Overrides the broad *.jsonl / *.csv ignores above for the small committed sample;
@@ -83,3 +85,7 @@ reports/models/
 reports/reprice_lag/
 reports/maker/
 data/series/
+
+# --- Local-only research state ---
+data/_corrupt_quarantine_*/
+data/discovery/

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kalshi Microstructure Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="rail">
+      <div class="brand">
+        <span class="mark">Kalshi &middot; 15m</span>
+        <span class="name">Microstructure Lab</span>
+        <span class="sub">research desk &middot; keyless</span>
+      </div>
+      <nav class="nav" id="nav">
+        <a data-view="overview"><span class="idx">01</span> Overview</a>
+        <a data-view="calibration"><span class="idx">02</span> Calibration</a>
+        <a data-view="research"><span class="idx">03</span> Research Map</a>
+        <a data-view="backtest"><span class="idx">04</span> Backtest</a>
+        <a data-view="replay"><span class="idx">05</span> Replay</a>
+      </nav>
+      <div class="foot">
+        No live trading.<br />Every number traces to a<br />committed artifact.
+      </div>
+    </aside>
+    <main class="main">
+      <div class="tape">
+        <span class="thesis">38 hypotheses tested &middot; <b>1 survivor</b> &middot; <b>0 bankable</b> &mdash; the market wins.</span>
+        <span class="badge" id="tape-badge">KXBTC15M</span>
+      </div>
+      <div id="content"><div class="loading">Loading committed artifacts&hellip;</div></div>
+    </main>
+  </div>
+  <div class="chart-tip" id="tip"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
